@@ -1,0 +1,24 @@
+{
+  "name": "夕风沐语 · 本地课表",
+  "short_name": "本地课表",
+  "start_url": "/xfmy-local/kernel/index.html",
+  "scope": "/xfmy-local/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f7f1e3",
+  "theme_color": "#f6ead8",
+  "icons": [
+    {
+      "src": "/xfmy-local/assets/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/xfmy-local/assets/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

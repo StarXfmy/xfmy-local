@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>本地课表</title>
+<meta name="description" content="自己的电脑与手机都能用的课表、日历、待办与天气，数据存在本地。">
+<meta name="theme-color" content="#f6ead8">
+<link rel="stylesheet" href="css/app.css">
+<script>
+/* 首屏别闪白：先按这台设备存过的偏好挂上 data-* */
+try {
+  var p = JSON.parse(localStorage.getItem('xfmy-local-prefs') || '{}');
+  document.documentElement.setAttribute('data-font', p.font || 'default');
+} catch (e) {}
+</script>
+
+<!-- xfmy-offline-meta —— 由 build_phone.py 注入，别手改 -->
+<link rel="manifest" href="/xfmy-local/manifest.webmanifest">
+<link rel="apple-touch-icon" href="/xfmy-local/assets/icon-180.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="本地课表">
+</head>
+<body>
+<header class="top">
+  <h1>本地课表</h1>
+  <nav class="nav" id="nav"></nav>
+</header>
+<main id="view"><p class="hint">正在读本地数据…</p></main>
+<p class="foot">数据只存在这台设备上；要换设备请用「同步」页导出再导入。</p>
+<div class="toast" id="toast" role="status"></div>
+<script src="js/lunar.js"></script>
+<script type="module" src="js/main.js"></script>
+<script>
+/* xfmy-offline-register —— 由 build_phone.py 注入，别手改 */
+if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+  window.addEventListener('load', function () {
+    navigator.serviceWorker.register('/xfmy-local/sw.js', { scope: '/xfmy-local/' }).then(function (reg) {
+      reg.addEventListener('updatefound', function () {
+        var nw = reg.installing;
+        if (!nw) return;
+        nw.addEventListener('statechange', function () {
+          if (nw.state === 'installed' && navigator.serviceWorker.controller) {
+            window.dispatchEvent(new CustomEvent('xfmy-update-ready'));
+          }
+        });
+      });
+    }).catch(function (e) { console.warn('离线壳注册失败：', e && e.message); });
+  });
+}
+</script>
+</body>
+</html>
