@@ -22,7 +22,7 @@ const app = {
     return v && typeof v.lat === 'number' ? v : { name: '绍兴', lat: 30.002, lon: 120.579 };
   },
   tz: function () { return T.tzNow(M.pref('tz', 'Asia/Shanghai')); },
-  fileMode: B.mode(),
+  fileMode: '',   // 等桥就位之后在 boot() 里填，模块刚求值时问它是问不准的
   refresh: function (msg) {
     return M.persist().then(function () {
       if (msg) toast(msg, 'ok');
@@ -77,6 +77,7 @@ function boot() {
   var now = new Date();
   app.cal.y = now.getFullYear();
   app.cal.m = now.getMonth();
+  app.fileMode = B.mode();
   try { storage = createStorage(); }
   catch (e) {
     document.getElementById('view').textContent = '存不了数据：' + e.message;

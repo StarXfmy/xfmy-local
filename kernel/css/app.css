@@ -19,12 +19,15 @@ html, body { margin: 0; padding: 0; }
 body {
   background: linear-gradient(180deg, #fbf3e6, var(--bg) 60%);
   color: var(--ink);
-  font: 15px/1.65 -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  /* 字体串与站点版的「圆润」档保持同一份，两边看着才是同一个东西 */
+  font: 15px/1.65 "Microsoft YaHei UI", "PingFang SC", "Hiragino Sans GB", system-ui, sans-serif;
   min-height: 100vh;
   padding-bottom: 40px;
 }
 [data-font="big"] body { font-size: 17px; }
 [data-font="serif"] body { font-family: "Songti SC", "SimSun", Georgia, serif; }
+[data-font="mono"] body { font-family: "Cascadia Code", Consolas, "Courier New", monospace; }
+[data-font="system"] body { font-family: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; }
 
 .top { max-width: 880px; margin: 0 auto; padding: 18px 16px 4px; }
 .top h1 { margin: 0 0 10px; font-size: 20px; letter-spacing: .04em; color: var(--accent-ink); }

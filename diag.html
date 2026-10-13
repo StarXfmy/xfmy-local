@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>离线能力自检</title>
+<style>
+body { font: 15px/1.7 -apple-system, "PingFang SC", "HarmonyOS Sans SC", system-ui, sans-serif;
+  background: #f7f1e3; color: #3a2f24; margin: 0 auto; padding: 18px 16px 40px; max-width: 720px; }
+h1 { font-size: 19px; margin: 0 0 4px; }
+.note { color: #8a7a63; font-size: 13px; margin: 0 0 16px; }
+.row { background: #fffdf8; border: 1px solid #e6d9c3; border-radius: 10px; padding: 10px 13px; margin: 8px 0; }
+.k { color: #8a7a63; font-size: 12.5px; letter-spacing: .3px; }
+.v { font-weight: 600; word-break: break-all; }
+.ok { color: #2f7d4f; } .no { color: #b4442f; } .mid { color: #a9772a; }
+.sec { margin: 22px 0 4px; font-size: 15px; font-weight: 700; color: #6b5a41; border-bottom: 1px dashed #d9c9ab; padding-bottom: 4px; }
+button { margin-top: 14px; padding: 9px 16px; border-radius: 9px; border: 1px solid #c8863c;
+  background: #fff; color: #8a5a18; font-size: 14px; font-weight: 600; }
+code { font-family: ui-monospace, Consolas, monospace; font-size: 12.5px; }
+</style>
+</head>
+<body>
+<h1>离线能力自检</h1>
+<p class="note">这一页只读你这台浏览器自身的能力，不联网取数据、也不碰你的课表。跑完把整页截图发过去就行。</p>
+<div id="out"><div class="row"><span class="k">正在测…</span></div></div>
+<button id="again" type="button">重新测一次</button>
+
+<script>
+(function () {
+  var out = document.getElementById('out');
+  function sec(t) { var d = document.createElement('div'); d.className = 'sec'; d.textContent = t; out.appendChild(d); }
+  function line(k, v, cls) {
+    var d = document.createElement('div'); d.className = 'row';
+    var a = document.createElement('div'); a.className = 'k'; a.textContent = k;
+    var b = document.createElement('div'); b.className = 'v' + (cls ? ' ' + cls : ''); b.textContent = v;
+    d.appendChild(a); d.appendChild(b); out.appendChild(d);
+    return b;
+  }
+  function wait(k) { return line(k, '…', 'mid'); }
+  function done(el, v, cls) { el.textContent = v; el.className = 'v' + (cls ? ' ' + cls : ''); }
+
+  // 离线壳地址：这一页和站点同目录，所以用相对路径算
+  var SW_URL = new URL('sw.js', location.href).href;
+  var SCOPE = new URL('./', location.href).href;
+  var ENTRY = new URL('kernel/index.html', location.href).href;
+  var MANIFEST = new URL('manifest.webmanifest', location.href).href;
+
+  async function run() {
+    out.innerHTML = '';
+    line('你这台浏览器', navigator.userAgent);
+    line('当前地址', location.href);
+    line('网络状态', navigator.onLine ? '在线' : '不在线', navigator.onLine ? 'ok' : 'mid');
+    line('是否 https 环境', location.protocol === 'https:' ? '是（安全上下文，允许装离线壳）' : '否：' + location.protocol,
+      location.protocol === 'https:' ? 'ok' : 'no');
+
+    sec('一、能不能装离线壳');
+    if (!('serviceWorker' in navigator)) {
+      line('Service Worker 支持', '这个浏览器不提供，装不了离线应用', 'no');
+    } else {
+      var w = wait('尝试注册离线壳（这一步最关键）');
+      try {
+        var reg = await Promise.race([
+          navigator.serviceWorker.register(SW_URL, { scope: SCOPE }),
+          new Promise(function (_, rej) { setTimeout(function () { rej(new Error('10 秒没回应：注册被卡住')); }, 10000); })
+        ]);
+        done(w, '注册成功 ✓ 说明浏览器支持，且 sw.js 的类型正确', 'ok');
+        line('作用范围 scope', reg.scope);
+        var st = reg.active ? 'activated（已生效）' : (reg.installing ? 'installing（正在装）' : reg.waiting ? 'waiting（等接管）' : '没有活动线程');
+        line('离线壳状态', st, reg.active ? 'ok' : 'mid');
+        var t = wait('等它装完预缓存（最多 15 秒）');
+        try {
+          await Promise.race([navigator.serviceWorker.ready, new Promise(function (_, rej) { setTimeout(function () { rej(new Error('timeout')); }, 15000); })]);
+          done(t, 'ready ✓', 'ok');
+        } catch (e) { done(t, '没等到 ready：' + e.message, 'no'); }
+      } catch (e) {
+        done(w, '注册失败：' + (e && e.message ? e.message : String(e)), 'no');
+        line('这条失败的含义', '多半是浏览器不允许该站点注册离线壳（厂商浏览器的限制），不是文件坏了', 'mid');
+      }
+      line('本页是否已被接管', navigator.serviceWorker.controller ? '是 ✓' : '还没有（本页自己不算，正常）',
+        navigator.serviceWorker.controller ? 'ok' : 'mid');
+    }
+
+    sec('二、缓存里到底存了多少');
+    if (!window.caches) { line('CacheStorage', '不可用', 'no'); }
+    else {
+      try {
+        var keys = await caches.keys();
+        line('缓存库', keys.length ? keys.join('、') : '一个都没有（说明预缓存没跑过）', keys.length ? 'ok' : 'no');
+        for (var i = 0; i < keys.length; i++) {
+          var c = await caches.open(keys[i]);
+          var rs = await c.keys();
+          line(keys[i], rs.length + ' 个文件' + (rs.length >= 18 ? ' ✓ 与打包清单一致' : ''));
+        }
+      } catch (e) { line('读缓存失败', e.message, 'no'); }
+    }
+
+    sec('三、能不能存下你的数据');
+    try {
+      var probe = 'xfmy-diag-' + Date.now();
+      localStorage.setItem(probe, '1');
+      var back = localStorage.getItem(probe);
+      localStorage.removeItem(probe);
+      line('localStorage', back === '1' ? '可写可读 ✓（设备偏好存这里）' : '写了读不回来 ✗', back === '1' ? 'ok' : 'no');
+    } catch (e) { line('localStorage', '被禁用：' + e.message, 'no'); }
+
+    try {
+      var idb = await new Promise(function (res, rej) {
+        var r = indexedDB.open('xfmy-diag', 1);
+        r.onupgradeneeded = function () { if (!r.result.objectStoreNames.contains('s')) r.result.createObjectStore('s', { keyPath: 'k' }); };
+        r.onsuccess = function () { res(r.result); };
+        r.onerror = function () { rej(r.error || new Error('打不开')); };
+      });
+      await new Promise(function (res, rej) {
+        var tx = idb.transaction('s', 'readwrite');
+        tx.objectStore('s').put({ k: 'probe', v: 'ok' });
+        tx.oncomplete = res; tx.onerror = function () { rej(tx.error); };
+      });
+      var got = await new Promise(function (res) {
+        var tx = idb.transaction('s', 'readonly');
+        var q = tx.objectStore('s').get('probe');
+        q.onsuccess = function () { res(q.result); };
+        q.onerror = function () { res(null); };
+      });
+      line('IndexedDB（你的课表数据存这里）', got && got.v === 'ok' ? '可写可读 ✓' : '读不回来 ✗', got && got.v === 'ok' ? 'ok' : 'no');
+      idb.close();
+    } catch (e) { line('IndexedDB', '不可用：' + e.message, 'no'); }
+
+    sec('四、站点那几个文件本身');
+    try {
+      var r1 = await fetch(ENTRY, { cache: 'no-store' });
+      var html = await r1.text();
+      line('入口页', r1.status + ' ' + r1.statusText, r1.ok ? 'ok' : 'no');
+      line('入口页里有 manifest 链接', /rel=["']manifest["']/.test(html) ? '有 ✓' : '没有 ✗（手机不会给安装入口）', /rel=["']manifest["']/.test(html) ? 'ok' : 'no');
+      line('入口页里有主屏图标链接', /apple-touch-icon/.test(html) ? '有 ✓' : '没有 ✗', /apple-touch-icon/.test(html) ? 'ok' : 'no');
+      line('入口页里有离线壳注册脚本', /serviceWorker/.test(html) ? '有 ✓' : '没有 ✗', /serviceWorker/.test(html) ? 'ok' : 'no');
+    } catch (e) { line('取入口页失败', e.message, 'no'); }
+    try {
+      var r2 = await fetch(MANIFEST, { cache: 'no-store' });
+      var ct2 = r2.headers.get('content-type') || '（空）';
+      var mf = {};
+      try { mf = await r2.json(); } catch (e) { mf = { _err: e.message }; }
+      line('manifest 类型', ct2, /manifest\+json|json/.test(ct2) ? 'ok' : 'mid');
+      line('manifest 内容', mf.name ? ('name=' + mf.name + '，display=' + (mf.display || '没写') + '，icons=' + ((mf.icons || []).length) + ' 个，start_url=' + (mf.start_url || '没写')) : ('解析失败：' + (mf._err || '空')), mf.name ? 'ok' : 'no');
+    } catch (e) { line('取 manifest 失败', e.message, 'no'); }
+    try {
+      var r3 = await fetch(SW_URL, { cache: 'no-store' });
+      var ct3 = r3.headers.get('content-type') || '（空）';
+      line('sw.js 类型', ct3, /javascript/.test(ct3) ? 'ok' : 'no');
+    } catch (e) { line('取 sw.js 失败', e.message, 'no'); }
+
+    sec('五、最后一步：断网复测');
+    line('现在请这样做', '回到桌面等 10 秒 → 关掉手机 WiFi 和移动数据（开飞行模式）→ 再打开这一页。如果还能看到本页内容，说明离线真的成立。', 'mid');
+    line('刚才的结论', document.visibilityState === 'visible' ? '测完了，截图发我' : '（切回来会自动重测）');
+  }
+
+  document.getElementById('again').addEventListener('click', function () { run(); });
+  run();
+})();
+</script>
+</body>
+</html>
