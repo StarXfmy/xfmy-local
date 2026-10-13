@@ -517,26 +517,18 @@ export function viewSettings(mount, app) {
   add(box.body, el('p', 'hint', '时区、城市这类偏好只存在这台设备上，不会跟着同步包跑到手机上去。'));
   add(mount, box);
 
-  var imp = card('从站点搬数据过来');
-  add(imp.body, el('p', 'hint', '课表：选站点导出的 课表.json（或本地版自己的全量备份）。待办与日程：选站点「我的」页导出的 backup.json。'));
+  var imp = card('导入课表');
+  add(imp.body, el('p', 'hint', '手上只有纸质课表或手机截图、没有 JSON 文件的话不用这里——去「课表」页「加一门课」一条条填就行。这个入口是给「导出全量」那种包和站点导出的 课表.json 用的。'));
   add(imp.body, add(el('p', 'rowline'),
-    button('导入课表文件', 'primary', function () { importTimetableFile(app); }),
-    button('导入站点备份', '', function () { importLegacyFile(app); })));
-  var prev = el('div', 'preview');
-  add(imp.body, prev);
+    button('导入课表文件', 'primary', function () { importTimetableFile(app); })));
   add(mount, imp);
 
   var net = card('联网数据');
   add(net.body, add(el('p', 'rowline'),
     button('重取天气', '', function () { app.wxForce = true; app.refresh('天气重新取过了'); }),
-    button('重取节假日', '', function () { app.holidays = null; app.refresh('节假日重新取过了'); })));
-  add(net.body, el('p', 'hint', '断网时这两项会退回上次缓存的那份，并写明是几点钟取的。'));
+    button('重取节假日', '', function () { app.holidays = null; app.holidaysForce = true; app.refresh('节假日重新取过了'); })));
+  add(net.body, el('p', 'hint', '断网时这两项会退回上次缓存的那份，并写明是几点钟取的。节假日平时直接读包里带的那份，不依赖外网。'));
   add(mount, net);
-
-  var about = card('这个本地版是什么');
-  add(about.body, el('p', null, '一份纯前端内核 + 电脑窗口壳，数据在你自己电脑上，与站点互不影响。'));
-  add(about.body, el('p', 'hint', '手机要用的话，把 kernel 目录交给打包脚本 build_phone.py 打成 PWA，数据靠同一个同步层。'));
-  add(mount, about);
 }
 
 function importTimetableFile(app) {
@@ -554,17 +546,8 @@ function importTimetableFile(app) {
   }).catch(function (e) { toast(e.message, 'err'); });
 }
 
-function importLegacyFile(app) {
-  B.pickText('.json').then(function (text) {
-    if (!text) return null;
-    var obj;
-    try { obj = JSON.parse(text); } catch (e) { return toast('那个文件不是 JSON', 'err'); }
-    var r = M.importLegacyBackup(obj);
-    if (!r || !r.imported) return toast('里面没有能搬的待办或日程', 'err');
-    app.refresh('搬过来了：' + Object.keys(r.imported).map(function (k) { return k + ' ' + r.imported[k] + ' 条'; }).join('、')
-      + (r.skipped ? '（跳过 ' + r.skipped + ' 条已存在的）' : ''));
-  }).catch(function (e) { toast(e.message, 'err'); });
-}
+/* 站点备份的搬运能力留在 model.js 的 importLegacyBackup() 里（含测试），
+   设置页那个入口按用户要求去掉了；以后要恢复就重新接一个按钮，不用重写逻辑。 */
 
 /* ---------------------------------------------------------------- 视图表 */
 export const VIEWS = {

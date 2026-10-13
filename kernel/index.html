@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Day Plan</title>
-<meta name="description" content="自己的电脑与手机都能用的课表、日历、待办与天气，数据存在本地。">
+<meta name="description" content="课表、日历、待办与天气。数据只存在你自己这台设备上，没有服务器。">
 <meta name="theme-color" content="#f6ead8">
 <link rel="stylesheet" href="css/app.css">
 <script>
@@ -19,7 +19,7 @@ try {
 <link rel="manifest" href="/xfmy-local/manifest.webmanifest">
 <link rel="apple-touch-icon" href="/xfmy-local/assets/icon-180.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="本地课表">
+<meta name="apple-mobile-web-app-title" content="Day Plan">
 </head>
 <body>
 <header class="top">
@@ -27,7 +27,7 @@ try {
   <nav class="nav" id="nav"></nav>
 </header>
 <main id="view"><p class="hint">正在读本地数据…</p></main>
-<p class="foot">数据只存在这台设备上；要换设备请用「同步」页导出再导入。</p>
+<p class="foot">数据只存在这台设备上，没有服务器兜底。只用手机可以先不管「同步」页，但隔段时间点一次「导出全量备份」更保险。</p>
 <div class="toast" id="toast" role="status"></div>
 <script src="js/lunar.js"></script>
 <script type="module" src="js/main.js"></script>

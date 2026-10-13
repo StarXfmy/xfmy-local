@@ -64,10 +64,14 @@ function startClock() {
 }
 
 function loadHolidaysIfNeeded(key) {
-  if (key !== 'calendar') return;
+  var force = !!app.holidaysForce;
+  app.holidaysForce = false;
+  // 注意：设置页那个「重取节假日」是在 settings 视图里点的，只按 key 判断会被自己挡掉
+  // （以前就是这样，按钮点了什么都没发生）。显式要求重取时，不管当前在哪个视图都要去取。
+  if (key !== 'calendar' && !force) return;
   var wantYear = app.cal.y;
-  if (app.holidays && app.holidaysYear === wantYear) return;
-  N.getHolidays(wantYear).then(function (r) {
+  if (!force && app.holidays && app.holidaysYear === wantYear) return;
+  N.getHolidays(wantYear, force).then(function (r) {
     app.holidays = r.map; app.holidaysAt = r.at; app.holidaysYear = wantYear;
     if (currentKey() === 'calendar') render();
   }).catch(function () { app.holidays = {}; app.holidaysYear = wantYear; });
@@ -108,7 +112,7 @@ function boot() {
   M.loadStore(storage).then(function (r) {
     if (r.error) { toast('数据文件读不出来：' + r.error + '（这次先按空数据打开，别存，先自己备份一下）', 'err'); }
     render();
-    if (r.fresh) toast('这是这台设备第一次打开，还没有数据：去设置页导入课表，或直接加待办', 'ok');
+    if (r.fresh) toast('这是这台设备第一次打开，还没有数据：去「课表」页一门一门加课，学期和节次时刻表也在那一页', 'ok');
   }).catch(function (e) {
     document.getElementById('view').textContent = '启动失败：' + (e.message || e);
   });

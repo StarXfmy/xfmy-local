@@ -1,6 +1,6 @@
 {
-  "name": "夕风沐语 · 本地课表",
-  "short_name": "本地课表",
+  "name": "Day Plan",
+  "short_name": "Day Plan",
   "start_url": "/xfmy-local/kernel/index.html",
   "scope": "/xfmy-local/",
   "display": "standalone",

@@ -10,9 +10,14 @@ const WX_URL = function (city) {
     + '&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max,weathercode'
     + '&hourly=temperature_2m,weathercode,precipitation_probability';
 };
+/* 节假日取数顺序：先读**包内的本地副本**（kernel/holidays/年份.json），再退到外网。
+   为什么：cdn.jsdelivr.net 在国内经常连不通（实测这台机器直接 000），而离线包里的副本
+   由 Service Worker 预缓存，断网也有红「休」灰「班」。外网只当补充新年份数据用。
+   每年 11～12 月官方公布下一年安排后，更新 kernel/holidays/ 下的文件即可。 */
 const HOL_URLS = [
-  function (y) { return 'https://cdn.jsdelivr.net/gh/NateScarlet/holiday-cn@master/' + y + '.json'; },
-  function (y) { return 'https://raw.githubusercontent.com/NateScarlet/holiday-cn/master/' + y + '.json'; }
+  function (y) { return 'holidays/' + y + '.json'; },
+  function (y) { return 'https://raw.githubusercontent.com/NateScarlet/holiday-cn/master/' + y + '.json'; },
+  function (y) { return 'https://cdn.jsdelivr.net/gh/NateScarlet/holiday-cn@master/' + y + '.json'; }
 ];
 
 const WMO = {
@@ -27,6 +32,7 @@ const WMO = {
 const CACHE_KEY = 'xfmy-local-net';
 const WX_TTL = 30 * 60 * 1000;          // 天气半小时内的缓存直接用，免得反复打接口
 const HOL_TTL = 7 * 24 * 3600 * 1000;   // 节假日一年也改不了几次
+const HOL_EMPTY_RETRY = 3600 * 1000;    // 取到空表（比如 2027 年官方还没公布）只挡 1 小时，别把空结果锁 7 天
 
 function readCache() {
   try { return JSON.parse(localStorage.getItem(CACHE_KEY) || '{}') || {}; } catch (e) { return {}; }
@@ -135,7 +141,8 @@ export function advice(w) {
 /** 取某年节假日，返回 {map:{'2026-10-01':{name,off}}, at, offline}。取不到就回空表，日历照样能翻。 */
 export async function getHolidays(year, force) {
   var c = readCache(), key = 'hol-' + year, hit = c[key];
-  if (!force && hit && Date.now() - hit.at < HOL_TTL) return { map: hit.map, at: hit.at, offline: false, cached: true };
+  var ttl = (hit && hit.empty) ? HOL_EMPTY_RETRY : HOL_TTL;
+  if (!force && hit && Date.now() - hit.at < ttl) return { map: hit.map, at: hit.at, offline: false, cached: true };
   for (var i = 0; i < HOL_URLS.length; i++) {
     try {
       var j = await fetchJson(HOL_URLS[i](year), 9000);
@@ -145,11 +152,12 @@ export async function getHolidays(year, force) {
         var d = days[k];
         if (d && d.date) map[d.date] = { name: String(d.name || ''), off: !!d.isOffDay };
       });
-      c[key] = { at: Date.now(), map: map };
+      // 空表只挡 1 小时：官方还没公布下一年时，别把"什么都没有"锁成一星期
+      c[key] = { at: Date.now(), map: map, empty: Object.keys(map).length === 0 };
       writeCache(c);
       return { map: map, at: c[key].at, offline: false };
     } catch (e) { /* 换下一个源 */ }
   }
-  if (hit) return { map: hit.map, at: hit.at, offline: true };
+  if (hit && !hit.empty) return { map: hit.map, at: hit.at, offline: true };
   return { map: {}, at: 0, offline: true, none: true };
 }
