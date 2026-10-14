@@ -33,6 +33,24 @@ try {
 <script type="module" src="js/main.js"></script>
 <script>
 /* xfmy-offline-register —— 由 build_phone.py 注入，别手改 */
+/* 一次性维护：解开「旧壳一直发旧文件」的死锁。
+   页面本身能从网络取到（它走 networkFirst），但壳里缓存的 JS 会一直是旧的，
+   而壳自己的更新又可能被 HTTP 缓存卡住。所以这一版页面只要被打开过一次，
+   就主动注销旧壳、清空所有缓存、重载一次；之后按下面的逻辑重新注册新壳。 */
+if (navigator.onLine !== false && 'serviceWorker' in navigator && location.protocol !== 'file:') {
+  try {
+    if (!localStorage.getItem('xfmy-shell-reset-1')) {
+      localStorage.setItem('xfmy-shell-reset-1', '1');
+      navigator.serviceWorker.getRegistrations().then(function (rs) {
+        return Promise.all(rs.map(function (r) { return r.unregister(); }));
+      }).then(function () {
+        return caches.keys().then(function (ks) {
+          return Promise.all(ks.map(function (k) { return caches.delete(k); }));
+        });
+      }).then(function () { location.reload(); });
+    }
+  } catch (e) { }
+}
 if ('serviceWorker' in navigator && location.protocol !== 'file:') {
   window.addEventListener('load', function () {
     // updateViaCache:'none' 让浏览器检查 sw.js 时绕开 HTTP 缓存（GitHub 给它设了 10 分钟缓存，
