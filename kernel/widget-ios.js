@@ -24,6 +24,14 @@ const DEFAULT_URL = 'https://raw.githubusercontent.com/StarXfmy/xfmy-local/main/
 // 注意它的 raw 地址会 302 跳到自己家的 CDN，所以下面取数是手动跟跳的。
 const GITEE_RAW = 'https://gitee.com/StarXfmy/dayplan/raw/main/widget.json';
 const GITEE_API = 'https://gitee.com/api/v5/repos/StarXfmy/dayplan/contents/widget.json';
+
+/* 本地缓存：每次成功读到快照就顺手存一份，读不到时拿它顶一会儿。
+   用 local 而不是 iCloud：这是设备本地目录，小组件环境里读写都稳。 */
+let FM = null, CACHE = '';
+try {
+  FM = FileManager.local();
+  CACHE = FM.joinPath(FM.documentsDirectory(), 'dayplan-snap.json');
+} catch (e) { FM = null; }
 const REFRESH_MIN = 15;   // 期望的最小刷新间隔（分钟）；iOS 不保证照做
 const PER_TRY = 5;        // 单个地址最多等这么久：小组件整次刷新有十秒上下的时限，
                           // 头一个地址卡太久，轮不到后面的候选就被系统掐掉了
@@ -104,6 +112,21 @@ for (let i = 0; i < cands.length && !snap; i++) {
   } catch (e) {
     lines.push(shortUrl(cands[i]) + ' 不行：' + String(e && e.message ? e.message : e));
   }
+}
+
+// 一个地址都没读到：翻本地缓存顶着（断网、Gitee 抽风时还能看见课表，只是会标上时间）
+let fromCache = false;
+if (!snap && FM && CACHE) {
+  try {
+    if (FM.fileExists(CACHE)) {
+      snap = JSON.parse(FM.readString(CACHE));
+      fromCache = true;
+    }
+  } catch (e) { snap = null; fromCache = false; }
+}
+// 这次是真读到了，就把好的那份存下来，供下次断网时用（存失败不影响显示）
+if (snap && !fromCache && FM && CACHE) {
+  try { FM.writeString(CACHE, JSON.stringify(snap)); } catch (e) { }
 }
 
 const fam = config.runsInWidget ? config.widgetFamily : 'medium';
@@ -214,8 +237,8 @@ if (!snap) {
   }
 
   w.addSpacer(null);   // 弹性留白：内容少的时候把「发布时间」顶到最底
-  const foot = w.addText((snap.at ? timeOf(snap.at) : '') + ' 发布');
-  foot.textColor = sub; foot.font = Font.systemFont(9);
+  const foot = w.addText((snap.at ? timeOf(snap.at) : '') + (fromCache ? ' 那份 · 离线中' : ' 发布'));
+  foot.textColor = fromCache ? warn : sub; foot.font = Font.systemFont(9);
 }
 
 // 在桌面上跑：挂上去就行。在 App 里点运行：必须显式弹出来，
