@@ -64,6 +64,16 @@ function repoPath() {
   return String(cfg().path || 'widget.json').replace(/^\/+/, '');
 }
 
+/** 换一个猜不到的文件名。仓库是公开的，路径本身就是唯一的访问控制——
+   默认的 widget.json 太规整，等于半公开；带上随机尾巴才好得多。
+   注意：改完要重新发布一次，旧名字那份还留在仓库里（要彻底消失得去仓库手动删）。 */
+export function randomPath() {
+  var s = '';
+  var abc = 'abcdefghijkmnpqrstuvwxyz23456789';   // 去掉容易看错的 1/l/0/o
+  for (var i = 0; i < 6; i++) s += abc.charAt(Math.floor(Math.random() * abc.length));
+  return 'widget-' + s + '.json';
+}
+
 /* ---------------------------------------------------------------- 纯计算部分 */
 
 function pad2(n) { return (n < 10 ? '0' : '') + String(n); }

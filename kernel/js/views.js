@@ -570,6 +570,15 @@ function publishCard(app) {
 
   add(box.body, add(el('div', 'inlineform'), field('用户名', owner), field('仓库', repo), field('分支', branch), field('文件名', path)));
   add(box.body, add(el('div', 'inlineform'), field('访问令牌', sec), field('发布范围', scope), field('发几天', days)));
+  add(box.body, add(el('p', 'rowline'),
+    button('换个看不出来的文件名', '', function () {
+      path.value = P.randomPath();
+      P.setCfg({ path: path.value });
+      link.textContent = P.publicUrl();
+      link.href = P.publicUrl();
+      toast('换成 ' + path.value + '，要重新发布一次才生效', 'ok');
+    }),
+    el('span', 'hint', '仓库是公开的，文件名就是那道门槛')));
   add(box.body, add(el('p', 'rowline'), field('存改动后自动发布', auto),
     button('存好设置', 'primary', function () { saveForm(); app.refresh('发布设置存好了'); }),
     button('立即发布', 'primary', function () { doPublish(app, saveForm, status); }),
@@ -585,7 +594,8 @@ function publishCard(app) {
   add(box.body, status);
   add(box.body, linkRow);
   add(box.body, el('p', 'hint', '令牌只要这一个仓库的 Contents 读写（fine-grained），存在这台设备上，不进同步包、也不写进发布内容。'));
-  add(box.body, el('p', 'hint', '仓库是公开的：widget.json 里有什么，谁都能读到。不想露待办文字就把发布范围往下调。'));
+  add(box.body, el('p', 'hint', '几个人用就几个人各自建仓库、各自填自己的令牌。别把自己的令牌给别人——那等于给他改你整个仓库的权力。'));
+  add(box.body, el('p', 'hint', '仓库是公开的：这份快照里有什么，拿到地址的人都能读。不想露待办文字就把发布范围往下调，再换个看不出来的文件名。'));
   add(box.body, el('p', 'hint', '发出去到小组件看得见要几分钟——GitHub Pages 那边缓存十分钟，改完别急着等。'));
   return box;
 }
