@@ -363,23 +363,38 @@ async function giteeApi(path, init) {
   return data;
 }
 
-async function pushGitee(json, msg) {
-  return giteePut(repoPath(), json, msg);
+/** base64 解回文本（收 Gitee 读回来的内容用，和上面的 b64 互逆）。 */
+function unb64(s) {
+  var bin = atob(String(s || '').replace(/\s/g, ''));
+  var by = new Uint8Array(bin.length);
+  for (var i = 0; i < bin.length; i++) by[i] = bin.charCodeAt(i);
+  return new TextDecoder().decode(by);
 }
 
-/** 往 Gitee 仓库写一个文件（有就覆盖）——快照和脚本都走这里。 */
+/** 往 Gitee 仓库写一个文件（有就覆盖）——快照和脚本都走这里。
+    Gitee 和 GitHub 有两处不一样，踩过：
+    ① 文件不存在时它回的是空数组（HTTP 200），不是 404；
+    ② 新建得用 POST、覆盖必须用 PUT——拿 POST 去覆盖已有文件，它会回 400「文件名已存在」。 */
 async function giteePut(pathInRepo, content, msg) {
   var c = cfg();
   var base = '/repos/' + c.gOwner + '/' + c.gRepo + '/contents/' + pathInRepo;
   var cur = await giteeApi(base + '?access_token=' + encodeURIComponent(gSecret()));
+  var exists = !!(cur && cur.sha);
+  if (exists && cur.content) {
+    try { if (unb64(cur.content) === content) return { unchanged: true }; } catch (e) { /* 比不出来就照发 */ }
+  }
   var body = {
     access_token: gSecret(),
     message: msg,
     content: b64(content),
     branch: c.gBranch || 'main'
   };
-  if (cur && cur.sha) body.sha = cur.sha;         // 覆盖要带当前 sha，否则报冲突
-  return giteeApi(base, { method: 'POST', body: JSON.stringify(body) });
+  if (exists) body.sha = cur.sha;
+  return giteeApi(base, { method: exists ? 'PUT' : 'POST', body: JSON.stringify(body) });
+}
+
+async function pushGitee(json, msg) {
+  return giteePut(repoPath(), json, msg);
 }
 
 /** 顺手把 iOS 挂件脚本也发一份过去：iPhone 上那个加载器靠它拿最新版，
@@ -390,8 +405,8 @@ async function pushGiteeScript() {
     if (!res || !res.ok) return false;
     var src = await res.text();
     if (!src || src.indexOf('module.exports') < 0) return false;
-    await giteePut('widget-ios.js', src, 'widget: iOS 挂件脚本');
-    return true;
+    var r = await giteePut('widget-ios.js', src, 'widget: iOS 挂件脚本');
+    return !(r && r.unchanged);          // 内容本来就一样就不算「更新了」
   } catch (e) { return false; }
 }
 
