@@ -544,7 +544,7 @@ function publishCard(app) {
   var branch = input({ placeholder: 'main', autocapitalize: 'off', spellcheck: 'false' }, c.branch || 'main');
   var sec = input({ type: 'password', placeholder: P.secret() ? '已存 ' + P.secret().slice(0, 4) + '…（留着不动即不改）' : 'fine-grained 令牌', autocapitalize: 'off', spellcheck: 'false' });
   var scope = select(P.SCOPES, c.scope || 'lite');
-  var days = input({ type: 'number', min: '1', max: '7' }, c.days || 5);
+  var days = input({ type: 'number', min: '1', max: '7' }, P.clampDays(c.days));
   var auto = input({ type: 'checkbox' });
   auto.checked = !!c.auto;
   var status = el('p', 'hint');
@@ -561,8 +561,10 @@ function publishCard(app) {
     var patch = {
       owner: owner.value.trim(), repo: repo.value.trim(),
       path: path.value.trim() || 'widget.json', branch: branch.value.trim() || 'main',
-      scope: scope.value, days: Number(days.value) || 5, auto: auto.checked
+      scope: scope.value, days: P.clampDays(days.value), auto: auto.checked
     };
+    // 框里写 365 也只会存成 7，就把界面改成 7，别让它继续显示那个没生效的数字。
+    days.value = patch.days;
     if (sec.value.trim()) patch.secret = sec.value.trim();
     P.setCfg(patch);
     return patch;

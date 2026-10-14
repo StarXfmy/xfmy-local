@@ -115,12 +115,22 @@ function lunarOf(ds) {
   } catch (e) { return ''; }
 }
 
+/** 发几天：钳到 1..7。
+    输入框的 max 只是界面提示，手打的数字照样能存进配置（有人填过 365，
+    快照立刻涨到 104 KB，Scriptable 小组件读这种体积会超时，反而什么都显示不出来）。 */
+export function clampDays(n) {
+  var v = Math.floor(Number(n));
+  if (!isFinite(v) || v <= 0) return 5;
+  return v > 7 ? 7 : v;
+}
+
 /**
  * 生成快照。数据全从 src 给，这个函数不碰网络也不碰存储，能单独跑测试。
  *   src = { doc, todos, events, day, minutes, tz, wx, tips, appUrl, at }
  */
 export function snapshotOf(src, opts) {
   var o = Object.assign({ scope: 'full', days: 5, maxRows: 8 }, opts || {});
+  o.days = clampDays(o.days);
   var doc = src.doc || { periods: [], courses: [], termStart: '' };
   var start = String(src.day || ''), scope = o.scope;
   var days = [];
@@ -223,7 +233,7 @@ export async function buildSnapshot(opts) {
   var c = cfg(), o = opts || {};
   // 调用方可能传 {scope:undefined}（配置还没填），Object.assign 会把默认值盖掉，所以逐项判过
   var scope = o.scope || c.scope || 'lite';
-  var days = Number(o.days || c.days) || 5;
+  var days = clampDays(o.days || c.days);
   var tz = M.pref('tz', 'Asia/Shanghai');
   var t = T.tzNow(tz);
   var block = await weatherBlock(tz, t.day);
