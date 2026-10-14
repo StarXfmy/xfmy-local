@@ -58,12 +58,13 @@ function shortUrl(u) {
 }
 
 /** 取文本，遇到 3xx 自己跟过去：Scriptable 对 302 不保证自动跟随，
-    而 Gitee 的 raw 地址恰恰是 302 跳到自家 CDN——跟丢就什么也读不到。 */
+    而 Gitee 的 raw 地址恰恰是 302 跳到自家 CDN——跟丢就什么也读不到。
+    注意：Scriptable 的 Request 没有 setMethod()，方法就是 req.method = 'X' 属性赋值；
+    默认本来就是 GET，所以这里什么都不用设。 */
 async function fetchText(url) {
   let target = url;
   for (let hop = 0; hop < 5; hop++) {
     const req = new Request(target);
-    req.setMethod('GET');
     req.timeoutInterval = PER_TRY;
     const text = await req.loadString();
     const res = req.response || {};
