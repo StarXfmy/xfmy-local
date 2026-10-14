@@ -182,9 +182,19 @@ export function snapshotOf(src, opts) {
     var nl = T.nextLesson(doc, ds, isToday ? src.minutes : 0);
     var next = null;
     if (nl && !nl.empty) {
-      if (nl.inClass) next = { text: '在上 ' + cut(nl.course.name, 16) + ' · 剩 ' + T.humanLeft(nl.minutes), state: 'in' };
-      else if (!nl.finished) next = { text: '下一节 ' + cut(nl.course.name, 16) + ' · ' + T.humanLeft(nl.minutes) + '后', state: 'soon' };
-      else next = { text: '今天的 ' + list.length + ' 节课上完了', state: 'done' };
+      // atMin = 目标时刻是当天的第几分钟（上课中→下课时刻，课间→下节开始）。
+      // 客户端拿它配手机本地时间重算倒计时：小组件多久刷一次由 iOS 说了算，
+      // 快照里写死的「剩 30 分」可能过了一小时还挂在桌面上。
+      var atMin = src.minutes + nl.minutes;
+      if (nl.inClass) {
+        var nm1 = cut(nl.course.name, 16);
+        next = { text: '在上 ' + nm1 + ' · 剩 ' + T.humanLeft(nl.minutes), state: 'in', atMin: atMin, name: nm1 };
+      } else if (!nl.finished) {
+        var nm2 = cut(nl.course.name, 16);
+        next = { text: '下一节 ' + nm2 + ' · ' + T.humanLeft(nl.minutes) + '后', state: 'soon', atMin: atMin, name: nm2 };
+      } else {
+        next = { text: '今天的 ' + list.length + ' 节课上完了', state: 'done' };
+      }
     }
     var nTodo = g.today.length + g.late.length;
     var item = {

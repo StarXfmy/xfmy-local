@@ -188,8 +188,22 @@ if (!snap) {
   }
 
   if (day && day.next && !stale) {
-    const big = w.addText(day.next.text);
-    big.textColor = day.next.state === 'in' ? warn : ink;
+    // 快照里那句倒计时是发布那一刻算的，而桌面这张图可能挂很久——
+    // 有新字段（atMin）就用手本地时间重算一遍；老快照没有，就退回现成文本。
+    const nx = day.next;
+    let line = nx.text;
+    if (typeof nx.atMin === 'number' && day.date === localDay(0) && nx.state !== 'done') {
+      const now = new Date();
+      const diff = nx.atMin - (now.getHours() * 60 + now.getMinutes());
+      const nm = nx.name || '';
+      if (nx.state === 'in') {
+        line = diff > 0 ? '在上 ' + nm + ' · 剩 ' + leftText(diff) : '这节课该下课了 · 去 App 里点一下';
+      } else {
+        line = diff > 0 ? '下一节 ' + nm + ' · ' + leftText(diff) + '后' : '下一节该开始了 · 去 App 里点一下';
+      }
+    }
+    const big = w.addText(line);
+    big.textColor = nx.state === 'in' ? warn : ink;
     big.font = Font.boldSystemFont(fam === 'small' ? 13 : 15);
     big.lineLimit = 2; big.minimumScaleFactor = 0.6;
   }
@@ -279,6 +293,16 @@ function pickToday(days) {
 function timeOf(ms) {
   const d = new Date(ms), p = (n) => (n < 10 ? '0' : '') + n;
   return p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+}
+
+/** 把"还剩几分钟"说成人话，口径和 App 里的一致。 */
+function leftText(m) {
+  m = Math.max(0, Math.round(m));
+  if (m >= 60) {
+    const h = Math.floor(m / 60), r = m % 60;
+    return r ? h + ' 小时 ' + r + ' 分' : h + ' 小时';
+  }
+  return m + ' 分钟';
 }
 
 };
