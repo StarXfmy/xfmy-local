@@ -364,17 +364,35 @@ async function giteeApi(path, init) {
 }
 
 async function pushGitee(json, msg) {
+  return giteePut(repoPath(), json, msg);
+}
+
+/** 往 Gitee 仓库写一个文件（有就覆盖）——快照和脚本都走这里。 */
+async function giteePut(pathInRepo, content, msg) {
   var c = cfg();
-  var base = '/repos/' + c.gOwner + '/' + c.gRepo + '/contents/' + repoPath();
+  var base = '/repos/' + c.gOwner + '/' + c.gRepo + '/contents/' + pathInRepo;
   var cur = await giteeApi(base + '?access_token=' + encodeURIComponent(gSecret()));
   var body = {
     access_token: gSecret(),
     message: msg,
-    content: b64(json),
+    content: b64(content),
     branch: c.gBranch || 'main'
   };
   if (cur && cur.sha) body.sha = cur.sha;         // 覆盖要带当前 sha，否则报冲突
   return giteeApi(base, { method: 'POST', body: JSON.stringify(body) });
+}
+
+/** 顺手把 iOS 挂件脚本也发一份过去：iPhone 上那个加载器靠它拿最新版，
+    以后改脚本就不用再让人手动往 Scriptable 里粘。发失败也不影响快照。 */
+async function pushGiteeScript() {
+  try {
+    var res = await fetch('widget-ios.js');
+    if (!res || !res.ok) return false;
+    var src = await res.text();
+    if (!src || src.indexOf('module.exports') < 0) return false;
+    await giteePut('widget-ios.js', src, 'widget: iOS 挂件脚本');
+    return true;
+  } catch (e) { return false; }
 }
 
 /** 手动点按钮是 force（内容没变也重新提交一次）；自动发布不是。
@@ -389,14 +407,16 @@ export async function publish(opts) {
   if (!o.force && fp === c.lastFp) return { skipped: true, report: '跟上次一样，没重复提交' };
 
   var msg = 'widget: 快照 ' + snap.days[0].date + '（' + snap.scope + '）';
-  var ok = [], bad = [];
+  var ok = [], bad = [], scriptSent = false;
   if (useGh) {
     try { await pushGitHub(json, msg); ok.push('GitHub'); }
     catch (e) { bad.push('GitHub 没发出去：' + (e.message || e)); }
   }
   if (useGitee) {
-    try { await pushGitee(json, msg); ok.push('Gitee'); }
-    catch (e) { bad.push('Gitee 没发出去：' + (e.message || e)); }
+    try {
+      await pushGitee(json, msg); ok.push('Gitee');
+      scriptSent = await pushGiteeScript();
+    } catch (e) { bad.push('Gitee 没发出去：' + (e.message || e)); }
   }
   if (!ok.length) throw new Error('两边都没发成功。' + bad.join('；'));
 
@@ -407,6 +427,7 @@ export async function publish(opts) {
 
   var report = '已提交到 ' + ok.join(' 和 ') + '（' + repoPath() + '，约 ' +
     (Math.round(json.length / 102.4) / 10) + ' KB）';
+  if (scriptSent) report += '，挂件脚本也一并更新了';
   if (bad.length) report += '；' + bad.join('；');
   return { skipped: false, report: report, url: publicUrl(), url2: giteeUrl(), snapshot: snap };
 }

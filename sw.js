@@ -11,10 +11,10 @@
 
 'use strict';
 
-var BUILD = 'e96c7ee09a10';
+var BUILD = '1c9ac1524fd4';
 var BASE = '/xfmy-local/';
 var ENTRY = 'kernel/index.html';
-var PRECACHE = ["assets/icon-180.png", "assets/icon-192.png", "assets/icon-512.png", "diag.html", "kernel/css/app.css", "kernel/holidays/2025.json", "kernel/holidays/2026.json", "kernel/holidays/2027.json", "kernel/index.html", "kernel/js/bridge.js", "kernel/js/lunar.js", "kernel/js/main.js", "kernel/js/model.js", "kernel/js/net.js", "kernel/js/publish.js", "kernel/js/store/browser.js", "kernel/js/store/index.js", "kernel/js/store/pc.js", "kernel/js/timetable.js", "kernel/js/ui.js", "kernel/js/views.js", "manifest.webmanifest", "sync.mjs", "widget.html"];
+var PRECACHE = ["assets/icon-180.png", "assets/icon-192.png", "assets/icon-512.png", "diag.html", "kernel/css/app.css", "kernel/holidays/2025.json", "kernel/holidays/2026.json", "kernel/holidays/2027.json", "kernel/index.html", "kernel/js/bridge.js", "kernel/js/lunar.js", "kernel/js/main.js", "kernel/js/model.js", "kernel/js/net.js", "kernel/js/publish.js", "kernel/js/store/browser.js", "kernel/js/store/index.js", "kernel/js/store/pc.js", "kernel/js/timetable.js", "kernel/js/ui.js", "kernel/js/views.js", "kernel/widget-ios.js", "manifest.webmanifest", "sync.mjs", "widget.html"];
 
 var APP_CACHE = 'xfmy-app-' + BUILD;
 var API_CACHE = 'xfmy-api-v1';          // 外部接口响应单独一个库，跨构建保留（离线能看上次天气）
