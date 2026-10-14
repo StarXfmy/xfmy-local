@@ -35,7 +35,10 @@ try {
 /* xfmy-offline-register —— 由 build_phone.py 注入，别手改 */
 if ('serviceWorker' in navigator && location.protocol !== 'file:') {
   window.addEventListener('load', function () {
-    navigator.serviceWorker.register('/xfmy-local/sw.js', { scope: '/xfmy-local/' }).then(function (reg) {
+    // updateViaCache:'none' 让浏览器检查 sw.js 时绕开 HTTP 缓存（GitHub 给它设了 10 分钟缓存，
+    // 结果就是"推了新包、手机上却一直吃旧壳"）；reg.update() 再立刻主动查一次。
+    navigator.serviceWorker.register('/xfmy-local/sw.js', { scope: '/xfmy-local/', updateViaCache: 'none' }).then(function (reg) {
+      try { reg.update(); } catch (e) { }
       reg.addEventListener('updatefound', function () {
         var nw = reg.installing;
         if (!nw) return;

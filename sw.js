@@ -11,7 +11,7 @@
 
 'use strict';
 
-var BUILD = 'ee3f6105d92b';
+var BUILD = '5b80d00d2dd0';
 var BASE = '/xfmy-local/';
 var ENTRY = 'kernel/index.html';
 var PRECACHE = ["assets/icon-180.png", "assets/icon-192.png", "assets/icon-512.png", "diag.html", "kernel/css/app.css", "kernel/holidays/2025.json", "kernel/holidays/2026.json", "kernel/holidays/2027.json", "kernel/index.html", "kernel/js/bridge.js", "kernel/js/lunar.js", "kernel/js/main.js", "kernel/js/model.js", "kernel/js/net.js", "kernel/js/publish.js", "kernel/js/store/browser.js", "kernel/js/store/index.js", "kernel/js/store/pc.js", "kernel/js/timetable.js", "kernel/js/ui.js", "kernel/js/views.js", "kernel/widget-ios.js", "manifest.webmanifest", "sync.mjs", "widget.html"];
@@ -122,7 +122,9 @@ function cacheFirst(req) {
 
 function networkFirst(req, opts) {
   var o = opts || {};
-  return fetch(req).then(function (res) {
+  // no-cache = 每次都跟服务器核一下（有变化才下载，没变化 304 也省流量）。
+  // 不加的话浏览器可能直接把 HTTP 缓存里的旧页面给回来，推了新包手机也不动。
+  return fetch(req, { cache: 'no-cache' }).then(function (res) {
     if (res && res.ok) {
       var copy = res.clone();
       caches.open(APP_CACHE).then(function (c) { c.put(req, copy); });
