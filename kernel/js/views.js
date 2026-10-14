@@ -4,6 +4,7 @@ import * as M from './model.js';
 import * as T from './timetable.js';
 import * as N from './net.js';
 import * as B from './bridge.js';
+import * as P from './publish.js';
 import { el, add, clear, pad2, cnDay, weekdayCn, toast, button, field, input, select, card } from './ui.js';
 
 /* ---------------------------------------------------------------- 农历 */
@@ -529,6 +530,74 @@ export function viewSettings(mount, app) {
     button('重取节假日', '', function () { app.holidays = null; app.holidaysForce = true; app.refresh('节假日重新取过了'); })));
   add(net.body, el('p', 'hint', '断网时这两项会退回上次缓存的那份，并写明是几点钟取的。节假日平时直接读包里带的那份，不依赖外网。'));
   add(mount, net);
+
+  add(mount, publishCard(app));
+}
+
+/* ---------------------------------------------------------------- 发布到小组件 */
+function publishCard(app) {
+  var box = card('发布到桌面小组件', '把这份计划写成仓库里的 widget.json，手机桌面挂件读它');
+  var c = P.cfg();
+  var owner = input({ placeholder: 'GitHub 用户名', autocapitalize: 'off', spellcheck: 'false' }, c.owner || '');
+  var repo = input({ placeholder: '仓库名', autocapitalize: 'off', spellcheck: 'false' }, c.repo || '');
+  var path = input({ placeholder: 'widget.json', autocapitalize: 'off', spellcheck: 'false' }, c.path || 'widget.json');
+  var branch = input({ placeholder: 'main', autocapitalize: 'off', spellcheck: 'false' }, c.branch || 'main');
+  var sec = input({ type: 'password', placeholder: P.secret() ? '已存 ' + P.secret().slice(0, 4) + '…（留着不动即不改）' : 'fine-grained 令牌', autocapitalize: 'off', spellcheck: 'false' });
+  var scope = select(P.SCOPES, c.scope || 'lite');
+  var days = input({ type: 'number', min: '1', max: '7' }, c.days || 5);
+  var auto = input({ type: 'checkbox' });
+  auto.checked = !!c.auto;
+  var status = el('p', 'hint');
+  var last = c.lastAt ? new Date(c.lastAt).toLocaleString('zh-CN') + '，约 ' + (Math.round((c.lastSize || 0) / 102.4) / 10) + ' KB' : '还没发布过';
+  status.textContent = '上次发布：' + last;
+
+  var link = el('a', null, P.publicUrl());
+  link.href = P.publicUrl();
+  link.target = '_blank';
+  link.rel = 'noopener';
+  var linkRow = add(el('p', 'rowline'), el('b', null, '小组件填这个地址：'), link);
+
+  function saveForm() {
+    var patch = {
+      owner: owner.value.trim(), repo: repo.value.trim(),
+      path: path.value.trim() || 'widget.json', branch: branch.value.trim() || 'main',
+      scope: scope.value, days: Number(days.value) || 5, auto: auto.checked
+    };
+    if (sec.value.trim()) patch.secret = sec.value.trim();
+    P.setCfg(patch);
+    return patch;
+  }
+
+  add(box.body, add(el('div', 'inlineform'), field('用户名', owner), field('仓库', repo), field('分支', branch), field('文件名', path)));
+  add(box.body, add(el('div', 'inlineform'), field('访问令牌', sec), field('发布范围', scope), field('发几天', days)));
+  add(box.body, add(el('p', 'rowline'), field('存改动后自动发布', auto),
+    button('存好设置', 'primary', function () { saveForm(); app.refresh('发布设置存好了'); }),
+    button('立即发布', 'primary', function () { doPublish(app, saveForm, status); }),
+    button('只预览', '', function () {
+      P.previewSnapshot().then(function (s) {
+        toast('预览已打到控制台：' + s.days[0].date + ' 起 ' + s.days.length + ' 天，' + s.scope + ' 档');
+      }).catch(function (e) { toast(e.message, 'err'); });
+    }),
+    button('清掉令牌', 'danger', function () {
+      P.setCfg({ secret: '', lastFp: '' });
+      app.refresh('令牌清掉了，要重新发布得再填一次');
+    })));
+  add(box.body, status);
+  add(box.body, linkRow);
+  add(box.body, el('p', 'hint', '令牌只要这一个仓库的 Contents 读写（fine-grained），存在这台设备上，不进同步包、也不写进发布内容。'));
+  add(box.body, el('p', 'hint', '仓库是公开的：widget.json 里有什么，谁都能读到。不想露待办文字就把发布范围往下调。'));
+  add(box.body, el('p', 'hint', '发出去到小组件看得见要几分钟——GitHub Pages 那边缓存十分钟，改完别急着等。'));
+  return box;
+}
+
+function doPublish(app, saveForm, status) {
+  saveForm();
+  if (!P.ready()) return toast('用户名、仓库、令牌三样都得先填上', 'err');
+  toast('正在发布…', 'ok');
+  P.publish({ force: true }).then(function (r) {
+    if (status) status.textContent = '上次发布：' + new Date().toLocaleString('zh-CN') + '，' + r.report;
+    toast(r.report, 'ok');
+  }).catch(function (e) { toast(e.message || String(e), 'err'); });
 }
 
 function importTimetableFile(app) {

@@ -47,6 +47,42 @@ MSYS_NO_PATHCONV=1 py -3 build_phone.py _stage/app \
 - `--short-name` 就是手机桌面上那个图标的名字，页面标题和 manifest 名字由它和 `--name` 决定。改了名已经装过的设备不会跟着变，要重新「添加到主屏幕」才更新。
 - **重打包之前先把预览服务器关掉**（`py -3 -m http.server` 那一类，绑 `0.0.0.0` 的也一样）。输出目录被别的进程开着时清空它会失败，脚本现在会报错并把 `.git` 放回原位、产物不动，但你要的是能产出，所以先关：`tasklist | findstr python` 看有没有还活着的 `python3.13.exe`，确认是哪个会话起的再停掉。
 
+## 桌面小组件（发布到 widget.json）
+
+「设置」页最下面那张「发布到桌面小组件」，把这台设备上的计划写成仓库根目录的 `widget.json`，
+桌面挂件按固定 URL 读它。走的是 GitHub Contents API（浏览器可以直接 PUT，实测预检放行），
+所以不需要任何自建服务器。
+
+- `kernel/js/publish.js` 发布层：拼快照、写仓库、自动发布。快照里放**未来几天**而不是只有今天，
+  因为挂件多久刷一次由系统说了算，只发今天的话过了零点它还挂着昨天的课。
+- `widget.html` 给安卓/鸿蒙的网页挂件用（`?size=s|l`、`?days=3`、`?src=URL`）。
+- `widget-ios.scriptable.js` 给 iOS 的 Scriptable 用，整份粘进新建脚本即可。
+- `test/widget.*.test.mjs` 两份离线测试：`node test/widget.snapshot.test.mjs`
+  和 `node test/widget.publish.test.mjs`（后者用一个假 Contents API 验 PUT 载荷，不联网）。
+
+三个要记住的点：
+
+- **仓库是公开的**，`widget.json` 里有什么谁都能读到。发布范围默认「课程与日程，待办只报条数」，
+  怕露待办文字就调到最紧那档。
+- **令牌单独存**（`localStorage` 的 `xfmy-github-auth`），不进 prefs、不进同步包、不进快照；
+  清站点数据会丢，要重填。
+- **`sw.js` 里那段 widget.json 的缓存分支要跟着模板走**：这份文件由 `build_phone.py` 生成，
+  重打包会把它按模板重写。仓库里现在这段是
+
+  ```js
+  if (/\/widget[^/]*\.json$/i.test(u.pathname)) {
+    var norm = new Request(u.origin + u.pathname, { method: 'GET', credentials: 'omit' });
+    evt.respondWith(networkFirstKeep(norm, API_CACHE));
+    return;
+  }
+  ```
+
+  没有它，挂件读到的快照会被 `cacheFirst` 钉死在第一次那份（桌面永远显示发布当天）。
+  缓存时抹掉 `?v=` 查询串也是必须的：`widget.html` 每十分钟换一个时间戳绕 CDN，
+  不抹就会在 `APP_CACHE` 里攒出几百份同样的快照。
+  **请把这段一并搬进 `build_phone.py` 的模板**，否则下次打包就退回旧行为。
+  同理，`PRECACHE` 要含 `kernel/js/publish.js` 和 `widget.html`，不然离线壳里打不开。
+
 ## 注意
 
 数据只有设备本地这一份副本，浏览器或系统清理功能可能把它清掉。请定期在「同步」页点「导出全量备份」并把那个 JSON 存到别处——这里没有云端兜底。

@@ -7,6 +7,7 @@ import { createStorage } from './store/index.js';
 import * as B from './bridge.js';
 import { el, add, clear, toast } from './ui.js';
 import { VIEWS } from './views.js';
+import * as P from './publish.js';
 
 const NAV = [['today', '今天'], ['courses', '课表'], ['calendar', '日历'], ['todos', '待办'],
   ['weather', '天气'], ['sync', '同步'], ['settings', '设置']];
@@ -27,6 +28,8 @@ const app = {
     return M.persist().then(function () {
       if (msg) toast(msg, 'ok');
       render();
+      // 本机数据落盘之后再管发布：发布是"对外发影子"，挂了不该影响这一笔保存
+      P.autoAfterSave();
     }).catch(function (e) { toast('存不下去：' + (e.message || e), 'err'); });
   }
 };
@@ -102,6 +105,14 @@ function boot() {
     return s;
   })());
   window.addEventListener('hashchange', render);
+  // 自动发布的结果在后台回来，用提示条说一句就行，不打断当前操作
+  window.addEventListener('xfmy-published', function (e) {
+    var d = e.detail || {};
+    if (!d.skipped) toast('小组件快照已更新', 'ok');
+  });
+  window.addEventListener('xfmy-publish-error', function (e) {
+    toast('小组件快照没发出去：' + e.detail, 'err');
+  });
   // 关掉前还有没存下去的改动，提醒一句（电脑上是同步写文件，手机浏览器才有这个风险）
   window.addEventListener('beforeunload', function (e) {
     if (!M.isDirty()) return;

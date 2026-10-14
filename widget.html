@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Day Plan · 桌面卡片</title>
+<meta name="description" content="给桌面小组件用的一页：只读 widget.json，把今天摊开给你看。">
+<meta name="theme-color" content="#f6ead8">
+<style>
+/* 配色与 kernel/css/app.css 那套暖色一致，两边看着是同一个东西。
+   刻意不复用 app.css：这一页要独立跑在各种网页挂件里，少一个请求少一分依赖。 */
+:root {
+  --bg: #f6ead8; --card: #fffdf7; --ink: #33291d; --sub: #7a6a55;
+  --line: #e3d3b8; --accent: #c8863c; --accent-ink: #8a5417; --warn: #b3402f;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  background: linear-gradient(180deg, #fbf3e6, var(--bg) 60%);
+  color: var(--ink);
+  font: 15px/1.6 "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei UI", system-ui, sans-serif;
+  padding: 12px;
+}
+[data-size="s"] { font-size: 13px; }
+[data-size="l"] { font-size: 18px; }
+
+.wrap { max-width: 520px; margin: 0 auto; }
+.card {
+  background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+  box-shadow: 0 6px 22px rgba(120, 88, 40, .10); padding: 12px 14px; margin-bottom: 10px;
+}
+.head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; margin-bottom: 4px; }
+.wd { font-size: 1.5em; font-weight: 700; color: var(--accent-ink); letter-spacing: .04em; }
+.lunar { color: var(--sub); font-size: .85em; }
+.week { color: var(--sub); font-size: .8em; margin-left: auto; }
+.next { font-size: 1.05em; font-weight: 600; margin: 2px 0 8px; }
+.next.in { color: var(--warn); }
+.next.done { color: var(--sub); font-weight: 400; }
+.wx { color: var(--accent-ink); font-size: .9em; margin: 0 0 8px; }
+ul { list-style: none; margin: 0; padding: 0; }
+li { display: flex; gap: 8px; padding: 3px 0; border-top: 1px dashed var(--line); }
+li:first-child { border-top: 0; }
+.when { color: var(--sub); font-size: .85em; min-width: 5.2em; flex: none; }
+.name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.room { color: var(--sub); font-size: .8em; font-style: italic; flex: none; }
+li.now .name { color: var(--accent); font-weight: 700; }
+li.late .name { color: var(--warn); }
+.tag { font-size: .78em; color: var(--sub); flex: none; }
+.empty { color: var(--sub); margin: 0; }
+.foot { color: var(--sub); font-size: .75em; text-align: center; margin: 0; }
+.foot a { color: var(--accent-ink); }
+.err { color: var(--warn); }
+.tip { color: var(--sub); font-size: .82em; margin: 6px 0 0; }
+@media (prefers-color-scheme: dark) {
+  /* 挂件多数跟着系统深色；这里只把底色压暗，层级靠边框撑 */
+  :root { --bg:#241d15; --card:#2d251b; --ink:#ece0c9; --sub:#a9977b; --line:#453726; --accent:#e0a45c; --accent-ink:#e8c48a; }
+  body { background: var(--bg); }
+}
+</style>
+</head>
+<body>
+<div class="wrap" id="app"><p class="empty">读取中…</p></div>
+<script>
+/* 只读 widget.json 的一页，给安卓/鸿蒙的「网页挂件」当画面。
+   参数：
+     ?size=s|l      字号，按挂件多大调
+     ?days=3        额外显示往后几天的课程（0 = 只看今天）
+     ?src=URL       换快照地址（默认同目录的 widget.json）
+   不写 innerHTML：快照里的课程名、待办文字全是用户自己打的，走 textContent 省掉一整类注入麻烦。 */
+(function () {
+  var q = new URLSearchParams(location.search);
+  var src = q.get('src') || new URL('widget.json', location.href).href;
+  var days = q.has('days') ? Math.max(0, Math.min(5, Number(q.get('days')) || 0)) : 0;
+  document.body.dataset.size = q.get('size') === 's' ? 's' : q.get('size') === 'l' ? 'l' : '';
+  var app = document.getElementById('app');
+
+  function el(t, cls, text) {
+    var n = document.createElement(t);
+    if (cls) n.className = cls;
+    if (text !== undefined && text !== null) n.textContent = String(text);
+    return n;
+  }
+  function add(p) {
+    for (var i = 1; i < arguments.length; i++) {
+      var k = arguments[i];
+      if (k === null || k === undefined || k === false) continue;
+      p.appendChild(typeof k === 'string' ? document.createTextNode(k) : k);
+    }
+    return p;
+  }
+  function localDay(offset) {
+    var d = new Date();
+    d.setHours(12, 0, 0, 0);
+    d.setDate(d.getDate() + (offset || 0));
+    var p = function (n) { return (n < 10 ? '0' : '') + n; };
+    return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
+  }
+  /** 快照停在哪天：拿它跟今天比，好把"这画面是旧的"说清楚 */
+  function snapDay(s) { return (s && s.days && s.days[0] && s.days[0].date) || ''; }
+
+  function courseList(item, max) {
+    var ul = el('ul');
+    (item.courses || []).slice(0, max).forEach(function (c) {
+      add(ul, add(el('li', c.now ? 'now' : ''),
+        el('span', 'when', c.when), el('span', 'name', c.name), c.room ? el('span', 'room', c.room) : null));
+    });
+    if (item.moreCourses) add(ul, el('li', 'tag', '还有 ' + item.moreCourses + ' 节'));
+    return ul;
+  }
+
+  function render(s) {
+    app.textContent = '';
+    var list = s.days || [];
+    var matched = list.filter(function (d) { return d.date === localDay(0); })[0];
+    var today = matched || list[0];
+    // "过期"只看今天还在不在快照里。快照本来覆盖未来几天，第 3 天用不算过期；
+    // 真过期是好几没发布、今天这条已经从 days 里滑出去了。
+    var stale = !matched;
+    if (!today) { add(app, el('p', 'err', '快照里没有日期')); return; }
+
+    var card = el('div', 'card');
+    add(card, add(el('div', 'head'),
+      el('span', 'wd', today.weekday || today.date),
+      today.lunar ? el('span', 'lunar', today.lunar) : null,
+      today.week ? el('span', 'week', '第 ' + today.week + ' 周') : null));
+
+    if (s.wx && s.wx.date === localDay(0) && s.wx.city) {
+      var line = s.wx.city + ' ' + s.wx.text + ' ' + s.wx.temp + '°';
+      if (s.wx.min !== null && s.wx.max !== null) line += ' · ' + s.wx.min + '~' + s.wx.max + '°';
+      if (s.wx.pop !== null) line += ' · 降水 ' + s.wx.pop + '%';
+      if (s.wx.offline) line += '（' + s.wx.ago + '的）';
+      add(card, el('p', 'wx', line));
+    }
+    // 过期快照上别摆倒计时和"下一节"：那是发布当时的进度，现在看全是假的
+    if (today.next && !stale) add(card, el('p', 'next ' + (today.next.state === 'in' ? 'in' : today.next.state === 'done' ? 'done' : ''), today.next.text));
+    if ((today.courses || []).length) add(card, courseList(today, 8));
+    else add(card, el('p', 'empty', stale ? '那天没课' : '今天没课'));
+
+    if (today.todos && today.todos.length) {
+      add(card, el('p', 'tip', '待办'));
+      var tu = el('ul');
+      today.todos.slice(0, 6).forEach(function (t) {
+        add(tu, add(el('li', t.late ? 'late' : ''), el('span', 'when', t.when || '今天'), el('span', 'name', t.text)));
+      });
+      add(card, tu);
+    } else if (today.todoCount) {
+      add(card, el('p', 'tip', '待办 ' + today.todoCount + ' 件' + (today.lateCount ? '（' + today.lateCount + ' 件拖了）' : '')));
+    }
+    if (today.events && today.events.length) {
+      var eu = el('ul');
+      today.events.slice(0, 4).forEach(function (e) {
+        add(eu, add(el('li', ''), el('span', 'when', e.kind), el('span', 'name', e.title)));
+      });
+      add(card, eu);
+    }
+    if (s.tips && s.tips.length) add(card, el('p', 'tip', s.tips[0]));
+    add(app, card);
+
+    // 往后几天各压成一行，想知道明天有没有课一眼就够
+    for (var i = 1; i <= days && i < (s.days || []).length; i++) {
+      var d = s.days[i];
+      var c2 = el('div', 'card');
+      add(c2, add(el('div', 'head'), el('span', 'wd', d.weekday), d.lunar ? el('span', 'lunar', d.lunar) : null,
+        d.week ? el('span', 'week', '第 ' + d.week + ' 周') : null));
+      add(c2, el('p', 'tip', d.summary));
+      if ((d.courses || []).length) add(c2, courseList(d, 5));
+      add(app, c2);
+    }
+
+    var foot = el('p', 'foot');
+    var a = el('a', null, 'Day Plan');
+    a.href = s.appUrl || 'kernel/index.html';
+    add(foot, a, el('span', stale ? 'err' : null,
+      stale ? ' 快照停在 ' + snapDay(s) + '，打开它重新发布'
+            : ' · ' + (s.at ? new Date(s.at).toLocaleString('zh-CN', { hour12: false }) : '')));
+    add(app, foot);
+  }
+
+  function fail(msg) {
+    app.textContent = '';
+    add(app, el('p', 'err', msg));
+    var foot = el('p', 'foot');
+    var a = el('a', null, '打开 Day Plan 发布一次');
+    a.href = 'kernel/index.html#settings';
+    add(foot, a);
+    add(app, foot);
+  }
+
+  // 带时间戳：Pages 那边 max-age=600，查询串变一次就等于绕开那层缓存
+  var url = src + (src.indexOf('?') < 0 ? '?' : '&') + 'v=' + Math.floor(Date.now() / 600000);
+  fetch(url, { cache: 'no-store', credentials: 'omit' }).then(function (r) {
+    if (!r.ok) throw new Error('快照读不到（' + r.status + '）');
+    return r.json();
+  }).then(render).catch(function (e) { fail(e.message || '读取出错'); });
+
+  setTimeout(function () { location.reload(); }, 10 * 60 * 1000);   // 十分钟自刷一次，跟 Pages 的缓存时长对上
+})();
+</script>
+</body>
+</html>

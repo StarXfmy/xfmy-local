@@ -11,10 +11,10 @@
 
 'use strict';
 
-var BUILD = '0e1e47b6cccd';
+var BUILD = '21d690b18a2b';
 var BASE = '/xfmy-local/';
 var ENTRY = 'kernel/index.html';
-var PRECACHE = ["assets/icon-180.png", "assets/icon-192.png", "assets/icon-512.png", "diag.html", "kernel/css/app.css", "kernel/holidays/2025.json", "kernel/holidays/2026.json", "kernel/holidays/2027.json", "kernel/index.html", "kernel/js/bridge.js", "kernel/js/lunar.js", "kernel/js/main.js", "kernel/js/model.js", "kernel/js/net.js", "kernel/js/store/browser.js", "kernel/js/store/index.js", "kernel/js/store/pc.js", "kernel/js/timetable.js", "kernel/js/ui.js", "kernel/js/views.js", "manifest.webmanifest", "sync.mjs"];
+var PRECACHE = ["assets/icon-180.png", "assets/icon-192.png", "assets/icon-512.png", "diag.html", "kernel/css/app.css", "kernel/holidays/2025.json", "kernel/holidays/2026.json", "kernel/holidays/2027.json", "kernel/index.html", "kernel/js/bridge.js", "kernel/js/lunar.js", "kernel/js/main.js", "kernel/js/model.js", "kernel/js/net.js", "kernel/js/publish.js", "kernel/js/store/browser.js", "kernel/js/store/index.js", "kernel/js/store/pc.js", "kernel/js/timetable.js", "kernel/js/ui.js", "kernel/js/views.js", "manifest.webmanifest", "sync.mjs", "widget.html"];
 
 var APP_CACHE = 'xfmy-app-' + BUILD;
 var API_CACHE = 'xfmy-api-v1';          // 外部接口响应单独一个库，跨构建保留（离线能看上次天气）
@@ -84,6 +84,15 @@ self.addEventListener('fetch', function (evt) {
     // 页面本身：先要最新的（联网时改动能立刻生效），断网或挂了才回缓存
     if (req.mode === 'navigate' || u.pathname === BASE || u.pathname.indexOf(BASE) === 0 && /\.html$/i.test(u.pathname)) {
       evt.respondWith(networkFirst(req, { fallbackPage: asset(ENTRY) }));
+      return;
+    }
+    // 小组件读的快照：这份是"本机刚发出去的影子"，必须每次尽量取新的。
+    // 走 cacheFirst 的话第一次的结果会一直发下去，桌面看到的永远停在发布当天。
+    // 挂件那边每十分钟带一个 ?v= 时间戳来绕 Pages 的 CDN 缓存，所以缓存时把查询串抹掉：
+    // 不抹的话每个时间戳都是一条新缓存，APP_CACHE 又不清理，几天就攒出几百份同样的快照。
+    if (/\/widget[^/]*\.json$/i.test(u.pathname)) {
+      var norm = new Request(u.origin + u.pathname, { method: 'GET', credentials: 'omit' });
+      evt.respondWith(networkFirstKeep(norm, API_CACHE));
       return;
     }
     // 静态资源：命中缓存直接用（离线可用），没有再取网并回填
