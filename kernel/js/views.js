@@ -89,7 +89,7 @@ export function viewToday(mount, app) {
     add(todo.body, el('p', 'empty', '今天没有待办。'));
   } else {
     groups.late.forEach(function (x) {
-      add(todo.body, add(el('p', 'row late'), el('b', 'when', x.when), el('span', 'name', x.t.text)));
+      add(todo.body, add(el('p', 'row late'), el('b', 'when', x.when), el('span', 'name', x.text)));
     });
     groups.today.forEach(function (x) {
       add(todo.body, add(el('p', 'row'), el('b', 'when', '今天'), el('span', 'name', x.text)));
