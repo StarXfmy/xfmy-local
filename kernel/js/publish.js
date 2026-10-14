@@ -17,6 +17,8 @@ const NS = 'xfmy-github';
 const CFG_KEY = NS + '-cfg';
 const AUTH_KEY = NS + '-auth';
 const API = 'https://api.github.com';
+const GITEE_AUTH_KEY = NS + '-gitee-auth';
+const GITEE_API = 'https://gitee.com/api/v5';
 
 /** 发布范围，从松到紧。默认走中间那档。 */
 export const SCOPES = [
@@ -40,16 +42,30 @@ export function setCfg(patch) {
     if (patch.secret) localStorage.setItem(AUTH_KEY, String(patch.secret).trim());
     else localStorage.removeItem(AUTH_KEY);
   }
+  if (next.gSecret !== undefined) {         // Gitee 的令牌同理，单独一个 key
+    delete next.gSecret;
+    if (patch.gSecret) localStorage.setItem(GITEE_AUTH_KEY, String(patch.gSecret).trim());
+    else localStorage.removeItem(GITEE_AUTH_KEY);
+  }
   try { localStorage.setItem(CFG_KEY, JSON.stringify(next)); } catch (e) { /* 存不下就这次不记 */ }
   return next;
 }
 
 export function secret() { return localStorage.getItem(AUTH_KEY) || ''; }
+export function gSecret() { return localStorage.getItem(GITEE_AUTH_KEY) || ''; }
 
-export function ready() {
+/** 两条发布链各自的门槛：GitHub 一条、Gitee 一条，谁配齐了就能用谁。 */
+export function ghReady() {
   var c = cfg();
   return !!(c.owner && c.repo && secret());
 }
+
+export function giteeReady() {
+  var c = cfg();
+  return !!(c.gOwner && c.gRepo && gSecret());
+}
+
+export function ready() { return ghReady() || giteeReady(); }
 
 /** 小组件要读的那个公开地址。没发布过也给个样子，好让人知道往哪填。
    域名和仓库路径从配置里推，不写死：换仓库或换 Pages 域名时这里跟着变。 */
@@ -62,6 +78,14 @@ export function publicUrl() {
 
 function repoPath() {
   return String(cfg().path || 'widget.json').replace(/^\/+/, '');
+}
+
+/** Gitee 那份的地址。国内网络基本都通，给 iPhone 这类连不上 GitHub 的设备用。
+    Gitee 的用户名区分大小写，所以这里不做 lowercase。 */
+export function giteeUrl() {
+  var c = cfg();
+  if (!c.gOwner || !c.gRepo) return '';
+  return 'https://gitee.com/' + c.gOwner + '/' + c.gRepo + '/raw/' + (c.gBranch || 'main') + '/' + repoPath();
 }
 
 /** 换一个猜不到的文件名。仓库是公开的，路径本身就是唯一的访问控制——
@@ -298,44 +322,93 @@ function fingerprint(snap) {
   return h.toString(36) + '-' + s.length;
 }
 
-/** 手动点按钮是 force（内容没变也重新提交一次）；自动发布不是。 */
-export async function publish(opts) {
-  var o = opts || {}, c = cfg();
-  if (!c.owner || !c.repo) throw new Error('先填 owner 和仓库名');
-  if (!secret()) throw new Error('先填访问令牌');
-  var snap = await buildSnapshot({ scope: c.scope, days: c.days });
-  var json = JSON.stringify(snap);
-  var fp = fingerprint(snap);
-  if (!o.force && fp === c.lastFp) return { skipped: true, report: '跟上次一样，没重复提交' };
-
-  var path = repoPath();
-  var base = '/repos/' + c.owner + '/' + c.repo + '/contents/' + path;
-  var body = {
-    message: 'widget: 快照 ' + snap.days[0].date + '（' + snap.scope + '）',
-    content: b64(json),
-    branch: c.branch || 'main'
-  };
+/** GitHub 那份。覆盖已有文件要先读 sha；409 表示别处刚改过，重读一次再试。 */
+async function pushGitHub(json, msg) {
+  var c = cfg();
+  var base = '/repos/' + c.owner + '/' + c.repo + '/contents/' + repoPath();
+  var body = { message: msg, content: b64(json), branch: c.branch || 'main' };
   var commit = function () { return api(base, { method: 'PUT', body: JSON.stringify(body) }); };
   var cur = await api(base);
   if (cur && cur.sha) body.sha = cur.sha;          // 覆盖已有文件必须带它的 sha，否则 422
   try {
-    var r = await commit();
-    return done(r, fp, json, path, snap);
+    return await commit();
   } catch (e) {
     if (e.status !== 409) throw e;
     // 别处（电脑上、网页上）刚改过这个文件：重读 sha 再试一次，还失败就如实报
     var fresh = await api(base);
     if (!fresh || !fresh.sha) throw new Error('提交冲突，而且读不回文件当前版本');
     body.sha = fresh.sha;
-    return done(await commit(), fp, json, path, snap);
+    return await commit();
   }
 }
 
-function done(r, fp, json, path, snap) {
-  if (!r || !r.commit) throw new Error('接口没给 commit，等于没提交成功');
-  setCfg({ lastFp: fp, lastAt: Date.now(), lastSize: json.length, lastCommit: r.commit.sha });
-  return { skipped: false, report: '已提交 ' + path + '，约 ' + (Math.round(json.length / 102.4) / 10) + ' KB',
-    url: publicUrl(), snapshot: snap };
+/** Gitee 那份。接口形状和 GitHub 不一样：令牌放在请求体/查询串里，不放请求头里。 */
+async function giteeApi(path, init) {
+  var res = await fetch(GITEE_API + path, {
+    method: init && init.method ? init.method : 'GET',
+    credentials: 'omit',
+    headers: { 'Content-Type': 'application/json' },
+    body: init && init.body ? init.body : undefined
+  });
+  if (res.status === 401) throw new Error('Gitee 说令牌不对，或没这个仓库的读写权限');
+  if (res.status === 403) throw new Error('Gitee 回 403：令牌权限不够（生成时勾上 projects）');
+  if (res.status === 404) return null;             // 文件还不存在，走「新建」那一支
+  var data = null;
+  try { data = await res.json(); } catch (e) { data = null; }
+  if (!res.ok) {
+    var err = new Error('Gitee 接口回 ' + res.status + (data && data.message ? '：' + data.message : ''));
+    err.status = res.status;
+    throw err;
+  }
+  return data;
+}
+
+async function pushGitee(json, msg) {
+  var c = cfg();
+  var base = '/repos/' + c.gOwner + '/' + c.gRepo + '/contents/' + repoPath();
+  var cur = await giteeApi(base + '?access_token=' + encodeURIComponent(gSecret()));
+  var body = {
+    access_token: gSecret(),
+    message: msg,
+    content: b64(json),
+    branch: c.gBranch || 'main'
+  };
+  if (cur && cur.sha) body.sha = cur.sha;         // 覆盖要带当前 sha，否则报冲突
+  return giteeApi(base, { method: 'POST', body: JSON.stringify(body) });
+}
+
+/** 手动点按钮是 force（内容没变也重新提交一次）；自动发布不是。
+    两条链都配了就都发；一条挂、另一条通，仍然算成功，报告里会写明哪条没发出去。 */
+export async function publish(opts) {
+  var o = opts || {}, c = cfg();
+  var useGh = ghReady(), useGitee = giteeReady();
+  if (!useGh && !useGitee) throw new Error('先填用户名、仓库、令牌（GitHub 和 Gitee 至少配一套）');
+  var snap = await buildSnapshot({ scope: c.scope, days: c.days });
+  var json = JSON.stringify(snap);
+  var fp = fingerprint(snap);
+  if (!o.force && fp === c.lastFp) return { skipped: true, report: '跟上次一样，没重复提交' };
+
+  var msg = 'widget: 快照 ' + snap.days[0].date + '（' + snap.scope + '）';
+  var ok = [], bad = [];
+  if (useGh) {
+    try { await pushGitHub(json, msg); ok.push('GitHub'); }
+    catch (e) { bad.push('GitHub 没发出去：' + (e.message || e)); }
+  }
+  if (useGitee) {
+    try { await pushGitee(json, msg); ok.push('Gitee'); }
+    catch (e) { bad.push('Gitee 没发出去：' + (e.message || e)); }
+  }
+  if (!ok.length) throw new Error('两边都没发成功。' + bad.join('；'));
+
+  // 全成功才记指纹（下次内容没变就跳过）；有一条挂了就先不记，好让它下次接着重试
+  var rec = { lastAt: Date.now(), lastSize: json.length };
+  if (!bad.length) rec.lastFp = fp;
+  setCfg(rec);
+
+  var report = '已提交到 ' + ok.join(' 和 ') + '（' + repoPath() + '，约 ' +
+    (Math.round(json.length / 102.4) / 10) + ' KB）';
+  if (bad.length) report += '；' + bad.join('；');
+  return { skipped: false, report: report, url: publicUrl(), url2: giteeUrl(), snapshot: snap };
 }
 
 /** 给设置页「预览」用：不发出去，只把要发的东西打印到控制台 */

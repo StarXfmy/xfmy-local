@@ -543,6 +543,9 @@ function publishCard(app) {
   var path = input({ placeholder: 'widget.json', autocapitalize: 'off', spellcheck: 'false' }, c.path || 'widget.json');
   var branch = input({ placeholder: 'main', autocapitalize: 'off', spellcheck: 'false' }, c.branch || 'main');
   var sec = input({ type: 'password', placeholder: P.secret() ? '已存 ' + P.secret().slice(0, 4) + '…（留着不动即不改）' : 'fine-grained 令牌', autocapitalize: 'off', spellcheck: 'false' });
+  var gOwner = input({ placeholder: 'Gitee 用户名（可留空）', autocapitalize: 'off', spellcheck: 'false' }, c.gOwner || '');
+  var gRepo = input({ placeholder: 'Gitee 仓库名（可留空）', autocapitalize: 'off', spellcheck: 'false' }, c.gRepo || '');
+  var gSec = input({ type: 'password', placeholder: P.gSecret() ? '已存 ' + P.gSecret().slice(0, 4) + '…（留着不动即不改）' : 'Gitee 私人令牌（可留空）', autocapitalize: 'off', spellcheck: 'false' });
   var scope = select(P.SCOPES, c.scope || 'lite');
   var days = input({ type: 'number', min: '1', max: '7' }, P.clampDays(c.days));
   var auto = input({ type: 'checkbox' });
@@ -555,29 +558,41 @@ function publishCard(app) {
   link.href = P.publicUrl();
   link.target = '_blank';
   link.rel = 'noopener';
-  var linkRow = add(el('p', 'rowline'), el('b', null, '小组件填这个地址：'), link);
+  var glink = el('a', null, '');
+  function syncLinks() {
+    link.textContent = P.publicUrl();
+    link.href = P.publicUrl();
+    var g = P.giteeUrl();
+    glink.textContent = g || '（填上 Gitee 用户名和仓库，存一次设置就会出现地址）';
+    if (g) { glink.href = g; glink.target = '_blank'; glink.rel = 'noopener'; }
+  }
+  syncLinks();
 
   function saveForm() {
     var patch = {
       owner: owner.value.trim(), repo: repo.value.trim(),
       path: path.value.trim() || 'widget.json', branch: branch.value.trim() || 'main',
+      gOwner: gOwner.value.trim(), gRepo: gRepo.value.trim(), gBranch: 'main',
       scope: scope.value, days: P.clampDays(days.value), auto: auto.checked
     };
     // 框里写 365 也只会存成 7，就把界面改成 7，别让它继续显示那个没生效的数字。
     days.value = patch.days;
     if (sec.value.trim()) patch.secret = sec.value.trim();
+    if (gSec.value.trim()) patch.gSecret = gSec.value.trim();
     P.setCfg(patch);
+    syncLinks();
     return patch;
   }
 
   add(box.body, add(el('div', 'inlineform'), field('用户名', owner), field('仓库', repo), field('分支', branch), field('文件名', path)));
   add(box.body, add(el('div', 'inlineform'), field('访问令牌', sec), field('发布范围', scope), field('发几天', days)));
+  add(box.body, el('p', 'hint', '上面这套是 GitHub 的。下面这套是可选的第二条链——Gitee（码云）：国内网络走得通，手机连不上 GitHub 时就让那个挂件读 Gitee 的地址，两边内容一模一样。'));
+  add(box.body, add(el('div', 'inlineform'), field('Gitee 用户名', gOwner), field('Gitee 仓库', gRepo), field('Gitee 令牌', gSec)));
   add(box.body, add(el('p', 'rowline'),
     button('换个看不出来的文件名', '', function () {
       path.value = P.randomPath();
       P.setCfg({ path: path.value });
-      link.textContent = P.publicUrl();
-      link.href = P.publicUrl();
+      syncLinks();
       toast('换成 ' + path.value + '，要重新发布一次才生效', 'ok');
     }),
     el('span', 'hint', '仓库是公开的，文件名就是那道门槛')));
@@ -590,21 +605,22 @@ function publishCard(app) {
       }).catch(function (e) { toast(e.message, 'err'); });
     }),
     button('清掉令牌', 'danger', function () {
-      P.setCfg({ secret: '', lastFp: '' });
-      app.refresh('令牌清掉了，要重新发布得再填一次');
+      P.setCfg({ secret: '', gSecret: '', lastFp: '' });
+      app.refresh('两个令牌都清掉了，要重新发布得再填一次');
     })));
   add(box.body, status);
-  add(box.body, linkRow);
-  add(box.body, el('p', 'hint', '令牌只要这一个仓库的 Contents 读写（fine-grained），存在这台设备上，不进同步包、也不写进发布内容。'));
+  add(box.body, add(el('p', 'rowline'), el('b', null, 'GitHub 地址：'), link));
+  add(box.body, add(el('p', 'rowline'), el('b', null, 'Gitee 地址：'), glink));
+  add(box.body, el('p', 'hint', 'GitHub 的令牌要 fine-grained、勾 Contents 读写；Gitee 的在「设置 → 私人令牌」里生成，勾上 projects。两个都只存在这台设备上，不进同步包、也不写进发布内容。'));
   add(box.body, el('p', 'hint', '几个人用就几个人各自建仓库、各自填自己的令牌。别把自己的令牌给别人——那等于给他改你整个仓库的权力。'));
   add(box.body, el('p', 'hint', '仓库是公开的：这份快照里有什么，拿到地址的人都能读。不想露待办文字就把发布范围往下调，再换个看不出来的文件名。'));
-  add(box.body, el('p', 'hint', '发出去到小组件看得见要几分钟——GitHub Pages 那边缓存十分钟，改完别急着等。'));
+  add(box.body, el('p', 'hint', '发出去到小组件看得见要几分钟——CDN 那边有十分钟缓存，改完别急着等。'));
   return box;
 }
 
 function doPublish(app, saveForm, status) {
   saveForm();
-  if (!P.ready()) return toast('用户名、仓库、令牌三样都得先填上', 'err');
+  if (!P.ready()) return toast('GitHub、Gitee 至少填全一套（用户名、仓库、令牌）', 'err');
   toast('正在发布…', 'ok');
   P.publish({ force: true }).then(function (r) {
     if (status) status.textContent = '上次发布：' + new Date().toLocaleString('zh-CN') + '，' + r.report;
