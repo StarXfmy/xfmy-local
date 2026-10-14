@@ -11,7 +11,7 @@
 
 'use strict';
 
-var BUILD = 'b15514fcfa01';
+var BUILD = '0e1e47b6cccd';
 var BASE = '/xfmy-local/';
 var ENTRY = 'kernel/index.html';
 var PRECACHE = ["assets/icon-180.png", "assets/icon-192.png", "assets/icon-512.png", "diag.html", "kernel/css/app.css", "kernel/holidays/2025.json", "kernel/holidays/2026.json", "kernel/holidays/2027.json", "kernel/index.html", "kernel/js/bridge.js", "kernel/js/lunar.js", "kernel/js/main.js", "kernel/js/model.js", "kernel/js/net.js", "kernel/js/store/browser.js", "kernel/js/store/index.js", "kernel/js/store/pc.js", "kernel/js/timetable.js", "kernel/js/ui.js", "kernel/js/views.js", "manifest.webmanifest", "sync.mjs"];

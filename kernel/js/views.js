@@ -291,14 +291,14 @@ export function viewCalendar(mount, app) {
     add(cell, el('b', null, String(d)),
       h ? el('i', 'hol' + (h.off ? ' off' : ' work'), h.off ? '休' : '班') : null,
       el('span', 'lun', lunarOf(date)),
-      h && h.name ? el('em', 'holname', h.name) : null,
+      h && h.name ? el('em', 'holname' + (h.off ? '' : ' work'), h.off ? h.name : h.name + '补班') : null,
       todos.some(function (x) { return !x.done && x.date === ds; }) ? el('u', 'dot tdot') : null,
       events.some(function (e) { return e.date === ds; }) ? el('u', 'dot edot') : null);
     (function (ds2) { cell.addEventListener('click', function () { cal.sel = cal.sel === ds2 ? '' : ds2; app.refresh(); }); })(ds);
     add(grid, cell);
   }
   add(box.body, grid);
-  add(box.body, el('p', 'hint', '红「休」是放假、灰「班」是调休。' + (app.holidaysAt ? '节假日数据取自 ' + N.agoLabel(app.holidaysAt) + '。' : '节假日数据还没取到，联网后点设置页的刷新。')));
+  add(box.body, el('p', 'hint', '红「休」是放假；灰「班」是调休，那天要上课，所以后面写的是「补班」而不是假期。' + (app.holidaysAt ? '节假日数据取自 ' + N.agoLabel(app.holidaysAt) + '。' : '节假日数据还没取到，联网后点设置页的刷新。')));
   add(mount, box);
 
   if (cal.sel) {

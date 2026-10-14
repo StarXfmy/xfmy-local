@@ -114,6 +114,7 @@ input[type="number"] { width: 92px; }
 .cald b { font-size: 14px; }
 .cald .lun { display: block; color: var(--sub); font-size: 11px; }
 .cald .holname { display: block; font-style: normal; font-size: 10.5px; color: var(--warn); }
+.cald .holname.work { color: var(--sub); }
 .cald .hol { position: absolute; right: 3px; top: 2px; font-style: normal; font-size: 10px; padding: 0 4px; border-radius: 6px; background: #fbe6e2; color: var(--warn); }
 .cald .hol.work { background: #e8eef0; color: var(--sub); }
 .cald.today { border-color: var(--accent); background: var(--accent-soft); }
