@@ -2,6 +2,9 @@
    发布时本地版会把它一起发到 Gitee，iPhone 上的加载器拉这个文件来跑。 */
 
 module.exports.run = async function () {
+// Variables used by Scriptable.
+// These must be at the very top of the file. Do not edit.
+// icon-color: orange; icon-glyph: calendar-alt;
 /*
  * Day Plan 桌面小组件
  * ------------------------------------------------------------------
@@ -188,22 +191,27 @@ if (!snap) {
   }
 
   if (day && day.next && !stale) {
-    // 快照里那句倒计时是发布那一刻算的，而桌面这张图可能挂很久——
-    // 有新字段（atMin）就用手本地时间重算一遍；老快照没有，就退回现成文本。
+    // 桌面这张图可能挂很久，而快照里那句倒计时是发布那一刻算的死文本。
+    // 新快照（v≥3）带整张节次表 + 每门课的 pStart/pEnd，卡片自己按手机时间认现在上第几节；
+    // 认不出（老快照）才退回 atMin 口径。规则与鸿蒙、安卓、card-logic.js 逐条一致。
     const nx = day.next;
+    const auto = autoCount(snap, day);
     let line = nx.text;
-    if (typeof nx.atMin === 'number' && day.date === localDay(0) && nx.state !== 'done') {
+    let isIn = nx.state === 'in';
+    if (auto) {
+      line = auto[0]; isIn = auto[1];
+    } else if (typeof nx.atMin === 'number' && day.date === localDay(0) && nx.state !== 'done') {
       const now = new Date();
       const diff = nx.atMin - (now.getHours() * 60 + now.getMinutes());
       const nm = nx.name || '';
       if (nx.state === 'in') {
-        line = diff > 0 ? '在上 ' + nm + ' · 剩 ' + leftText(diff) : '这节课该下课了 · 去 App 里点一下';
+        line = diff > 0 ? '在上 ' + nm + ' · 剩 ' + leftText(diff) : '这节课按课表该下课了';
       } else {
-        line = diff > 0 ? '下一节 ' + nm + ' · ' + leftText(diff) + '后' : '下一节该开始了 · 去 App 里点一下';
+        line = diff > 0 ? '下一节 ' + nm + ' · ' + leftText(diff) + '后' : '这节课按课表该开始了';
       }
     }
     const big = w.addText(line);
-    big.textColor = nx.state === 'in' ? warn : ink;
+    big.textColor = isIn ? warn : ink;
     big.font = Font.boldSystemFont(fam === 'small' ? 13 : 15);
     big.lineLimit = 2; big.minimumScaleFactor = 0.6;
   }
@@ -293,6 +301,47 @@ function pickToday(days) {
 function timeOf(ms) {
   const d = new Date(ms), p = (n) => (n < 10 ? '0' : '') + n;
   return p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+}
+
+function numOk(v) { return typeof v === 'number' && !isNaN(v); }
+
+/**
+ * 用整张节次表 + 每门课的 pStart/pEnd，按手机本地时间认出现在上第几节。
+ * 一节一节铺（而不是按整门课的起止区间）是为了识破连上课里的课间：
+ * 8:00–8:40 / 8:45–9:25 那门两节的课，8:42 其实没在上，不该说「在上 · 剩 X」。
+ * 老快照没有这些字段时返回 null，调用处退回 atMin 口径。
+ * 规则与 card-logic.js 的 periodState 逐条一致。
+ */
+function autoCount(snap, day) {
+  const periods = (snap && snap.periods) || [];
+  const list = (day && day.courses) || [];
+  if (!periods.length || !list.length) return null;
+  if (day.date !== localDay(0)) return null;
+  const now = new Date(), nowMin = now.getHours() * 60 + now.getMinutes();
+  const segs = [];
+  const taken = {};
+  for (let i = 0; i < list.length; i++) {
+    const c = list[i] || {};
+    if (!numOk(c.pStart) || c.pStart < 1) continue;
+    const a = c.pStart - 1, b = (numOk(c.pEnd) && c.pEnd >= c.pStart ? c.pEnd : c.pStart) - 1;
+    for (let k = a; k <= b && k < periods.length; k++) {
+      const p = periods[k] || {};
+      if (!numOk(p.startMin) || !numOk(p.endMin) || p.endMin <= p.startMin) continue;
+      if (taken[k]) continue;                    // 同一节被两门课占：取先出现的，和课表画法一致
+      taken[k] = true;
+      segs.push({ start: p.startMin, end: p.endMin, name: c.name || '' });
+    }
+  }
+  if (!segs.length) return null;
+  segs.sort((x, y) => x.start - y.start);
+  for (const s of segs) {
+    if (nowMin >= s.start && nowMin < s.end) return ['在上 ' + s.name + ' · 剩 ' + leftText(s.end - nowMin), true];
+  }
+  for (const s of segs) {
+    if (s.start > nowMin) return ['下一节 ' + s.name + ' · ' + leftText(s.start - nowMin) + '后', false];
+  }
+  const n = numOk(day.courseCount) && day.courseCount > 0 ? day.courseCount : segs.length;
+  return ['今天的 ' + n + ' 节课上完了', false];
 }
 
 /** 把"还剩几分钟"说成人话，口径和 App 里的一致。 */

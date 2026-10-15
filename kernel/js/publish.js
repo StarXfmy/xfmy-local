@@ -149,6 +149,17 @@ export function clampDays(n) {
 }
 
 /**
+ * 节次时刻表压成 {startMin,endMin} 数组，下标 i = 第 i+1 节。
+ * 发这个是因为课程行只有当天那几节（还按 maxRows 截断），卡片光看它推不出
+ * 「最后一节课几点下课」；有了整张表，三端都能自己按本地时间认出现在上第几节。
+ */
+function periodRows(periods) {
+  return (periods || []).map(function (p) {
+    return { startMin: T.toMin(p && p.start), endMin: T.toMin(p && p.end) };
+  });
+}
+
+/**
  * 生成快照。数据全从 src 给，这个函数不碰网络也不碰存储，能单独跑测试。
  *   src = { doc, todos, events, day, minutes, tz, wx, tips, appUrl, at }
  */
@@ -171,21 +182,32 @@ export function snapshotOf(src, opts) {
     });
     var rows = list.slice(0, o.maxRows).map(function (c) {
       var r = T.lessonRange(c, doc.periods);
-      return {
+      var row = {
         when: T.courseWhen(c, doc.periods),
         name: cut(c.name, 20),
         room: scope === 'count' ? '' : cut(c.room || '', 16),
         now: isToday && !!r && src.minutes >= r.from && src.minutes < r.to
       };
+      // 起止时刻（当天的第几分钟）：桌面卡片靠它自己判断「这节课上完了没」，
+      // 否则时间一走过快照里的状态，卡片只能说一句「数据可能旧了、去发布一下」。
+      // count 档不给精确分钟，那档的口径就是「只报节数不报内容」。
+      if (r && scope !== 'count') { row.startMin = r.from; row.endMin = r.to; }
+      // 起始节次序号：行被 maxRows 截断时，卡片还能靠节次表补齐下课点；
+      // 连着给 pEnd，卡片才能识破「连上课里的课间」——8:00–9:40 跨两节的课，
+      // 8:45–8:55 那 10 分钟其实没在上，不该显示「在上 · 剩 X」
+      if (c.pStart) row.pStart = c.pStart;
+      if (c.pEnd) row.pEnd = c.pEnd;
+      return row;
     });
     // 倒计时只对「今天」有意义；往后几天按 0 点算，等于给个「第一节是什么时候」
     var nl = T.nextLesson(doc, ds, isToday ? src.minutes : 0);
     var next = null;
     if (nl && !nl.empty) {
-      // atMin = 目标时刻是当天的第几分钟（上课中→下课时刻，课间→下节开始）。
-      // 客户端拿它配手机本地时间重算倒计时：小组件多久刷一次由 iOS 说了算，
-      // 快照里写死的「剩 30 分」可能过了一小时还挂在桌面上。
-      var atMin = src.minutes + nl.minutes;
+      // startMin / endMin = 那节课的绝对起止（当天第几分钟），客户端拿它配手机本地时间
+      // 自己判断「在上 / 还有多久 / 已经下课」，小组件几小时才刷一次也不会算错。
+      // atMin 是老口径（目标时刻），留着给旧版挂件用；只有「今天」才有意义，
+      // 明天及以后按 0 点算，混进今天的分钟数会把倒计时多算一整个白天（10-15 凌晨那条「36 小时后」）。
+      var atMin = nl.to !== undefined ? nl.to : (isToday ? src.minutes : 0) + nl.minutes;
       if (nl.inClass) {
         var nm1 = cut(nl.course.name, 16);
         next = { text: '在上 ' + nm1 + ' · 剩 ' + T.humanLeft(nl.minutes), state: 'in', atMin: atMin, name: nm1 };
@@ -194,6 +216,15 @@ export function snapshotOf(src, opts) {
         next = { text: '下一节 ' + nm2 + ' · ' + T.humanLeft(nl.minutes) + '后', state: 'soon', atMin: atMin, name: nm2 };
       } else {
         next = { text: '今天的 ' + list.length + ' 节课上完了', state: 'done' };
+      }
+      // 上完了的 from/to 是 null（下一节都不存在了），这时 endMin 给「最后一节的下课点」，
+      // 卡片能用它判断过完这一天，不会再喊人去发布。count 档同样不给精确分钟。
+      if (next && nl.from !== undefined && scope !== 'count') {
+        next.startMin = nl.from;
+        next.endMin = nl.to;
+      } else if (next && next.state === 'done' && scope !== 'count' && list.length) {
+        var lastR = T.lessonRange(list[list.length - 1], doc.periods);
+        if (lastR) next.endMin = lastR.to;
       }
     }
     var nTodo = g.today.length + g.late.length;
@@ -233,13 +264,14 @@ export function snapshotOf(src, opts) {
     };
   }
   return {
-    v: 2,
+    v: 3,
     at: src.at || M.now(),
     tz: src.tz || 'Asia/Shanghai',
     scope: scope,
     appUrl: src.appUrl || '',
     colors: { bg: '#f6ead8', card: '#fffdf7', ink: '#33291d', sub: '#7a6a55', accent: '#c8863c', warn: '#b3402f' },
     days: days,
+    periods: periodRows(doc.periods),
     wx: wx,
     tips: scope === 'full' ? (src.tips || []) : []
   };
@@ -263,6 +295,18 @@ async function weatherBlock(tz, day) {
   } catch (e) { return { wx: null, tips: [] }; }
 }
 
+/** 点卡片要拉起的那个地址：必须是**手机上打得开**的地址。
+    电脑上本地预览时 origin 是 `http://127.0.0.1:8765`，把它写进快照，
+    手机上的挂件点了就是死链（10-15 那份快照里就是这个），所以本机地址一律退回公网 Pages。
+    从 Pages 或以后绑定的自有域名里发布时，origin 本身就是能用的地址，跟着它走。 */
+export function appTarget(origin) {
+  var o = origin || '';
+  if (!/^https?:\/\//.test(o) || /127\.0\.0\.1|localhost|0\.0\.0\.0|\[::1\]|\.local(:|$)/.test(o)) {
+    o = 'https://starxfmy.github.io';
+  }
+  return o + '/' + (cfg().repo || 'xfmy-local') + '/kernel/index.html#today';
+}
+
 export async function buildSnapshot(opts) {
   var c = cfg(), o = opts || {};
   // 调用方可能传 {scope:undefined}（配置还没填），Object.assign 会把默认值盖掉，所以逐项判过
@@ -271,6 +315,7 @@ export async function buildSnapshot(opts) {
   var tz = M.pref('tz', 'Asia/Shanghai');
   var t = T.tzNow(tz);
   var block = await weatherBlock(tz, t.day);
+  var origin = (typeof location !== 'undefined' && location.origin) ? location.origin : '';
   return snapshotOf({
     doc: M.timetableDoc(),
     todos: M.todos(),
@@ -280,8 +325,7 @@ export async function buildSnapshot(opts) {
     tz: tz,
     wx: block.wx,
     tips: block.tips,
-    appUrl: (typeof location !== 'undefined' && location.origin && location.origin.indexOf('http') === 0
-      ? location.origin : 'https://starxfmy.github.io') + '/xfmy-local/kernel/index.html#today'
+    appUrl: appTarget(origin)
   }, { days: days, scope: scope });
 }
 

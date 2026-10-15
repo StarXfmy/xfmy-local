@@ -90,11 +90,13 @@ export function nextLesson(doc, dayStr, minutes) {
   list.forEach(function (c) {
     var r = lessonRange(c, periods);
     if (!r) return;
-    if (minutes >= r.from && minutes < r.to && (!cur || r.to < cur.to)) cur = { course: c, to: r.to };
-    if (r.from > minutes && (!soon || r.from < soon.from)) soon = { course: c, from: r.from };
+    if (minutes >= r.from && minutes < r.to && (!cur || r.to < cur.to)) cur = { course: c, from: r.from, to: r.to };
+    if (r.from > minutes && (!soon || r.from < soon.from)) soon = { course: c, from: r.from, to: r.to };
   });
-  if (cur) return { course: cur.course, inClass: true, minutes: cur.to - minutes };
-  if (soon) return { course: soon.course, inClass: false, minutes: soon.from - minutes };
+  // from / to 是那节课的绝对起止（当天第几分钟）。光给「还剩几分钟」不够：
+  // 那个数是发布那一刻算的，时间走过目标点就变负数，客户端分不清是下课了还是快照旧了。
+  if (cur) return { course: cur.course, inClass: true, minutes: cur.to - minutes, from: cur.from, to: cur.to };
+  if (soon) return { course: soon.course, inClass: false, minutes: soon.from - minutes, from: soon.from, to: soon.to };
   return { finished: true, count: list.length };
 }
 

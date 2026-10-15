@@ -14,6 +14,49 @@ try {
   document.documentElement.setAttribute('data-font', p.font || 'default');
 } catch (e) {}
 </script>
+<script>
+/* 带 ?autopub=1 打开时，页面启动完自己点一次「立即发布」。
+   这是给电脑上那个一键脚本用的：令牌存在这个窗口的存储里，命令行读不到，
+   只能让页面自己去发。不带这个参数时下面整段不执行，日常打开完全不受影响。 */
+if (new URLSearchParams(location.search).get('autopub') === '1') {
+  window.__autopub = 'running';
+  document.title = 'AUTOBOOT';
+  (async function () {
+    function say(txt, color) {
+      var d = document.getElementById('autopubBanner');
+      if (!d) {
+        d = document.createElement('div');
+        d.id = 'autopubBanner';
+        d.setAttribute('style', 'position:fixed;top:0;left:0;right:0;z-index:9999;' +
+          'padding:10px 14px;font:13px/1.5 system-ui;color:#fff;background:#333');
+        document.body ? document.body.appendChild(d) : document.addEventListener('DOMContentLoaded', function () { document.body.appendChild(d); });
+      }
+      if (color) d.style.background = color;
+      d.textContent = txt;
+    }
+    say('正在自动发布…');
+    for (var tries = 0; tries < 20; tries++) {
+      await new Promise(function (r) { setTimeout(r, 700); });
+      try {
+        var P = await import('./js/publish.js');
+        var report = await P.publish({});
+        document.title = 'AUTODONE';
+        say('已发布：' + String(report).slice(0, 400), '#2e7d32');
+        return;
+      } catch (e) {
+        var msg = (e && e.message) ? e.message : String(e);
+        if (/没配|no config|not configured|配置/i.test(msg) === false && tries >= 6) {
+          document.title = 'AUTOFAIL';
+          say('自动发布没成功：' + msg.slice(0, 300) + '（你也可以自己在设置页点「立即发布」）', '#b3402f');
+          return;
+        }
+      }
+    }
+    document.title = 'AUTOFAIL';
+    say('等不到页面就绪，发布没执行。请自己在设置页点「立即发布」。', '#b3402f');
+  })();
+}
+</script>
 
 <!-- xfmy-offline-meta —— 由 build_phone.py 注入，别手改 -->
 <link rel="manifest" href="/xfmy-local/manifest.webmanifest">
