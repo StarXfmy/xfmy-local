@@ -22,9 +22,11 @@ module.exports.run = async function () {
 
 // 默认走 raw.githubusercontent.com：它和 Pages 是同一份内容，但国内直连时 *.github.io 常被掐、
 // raw 这个域名反而通。
-const DEFAULT_URL = 'https://raw.githubusercontent.com/StarXfmy/xfmy-local/main/widget-9tu5ms.json';
+const DEFAULT_URL = 'https://raw.githubusercontent.com/StarXfmy/xfmy-local/main/widget.json';
 // Gitee（码云）那一份：国内网络基本都通，给连不上 GitHub 的设备用。
 // 注意它的 raw 地址会 302 跳到自己家的 CDN，所以下面取数是手动跟跳的。
+// widget.json 是「我自己」那份（iPhone 读它）；给同学的小米用的是另一个文件名
+// （widget-LAY.json），那边归同学，别搞混。
 const GITEE_RAW = 'https://gitee.com/StarXfmy/dayplan/raw/main/widget.json';
 const GITEE_API = 'https://gitee.com/api/v5/repos/StarXfmy/dayplan/contents/widget.json';
 
@@ -102,7 +104,9 @@ function toSnap(url, r) {
   return JSON.parse(text);
 }
 
-let snap = null;
+let snap = null;        // 优先要 v>=3 的新快照：它带节次时刻表，倒计时能自己算
+let snapOld = null;     // 只读到老版本时先攥着，万一全部候选都没有新的就用它
+let snapOldUrl = '';
 const lines = [];
 for (let i = 0; i < cands.length && !snap; i++) {
   // 查询串带十分钟粒度的戳：CDN 那边是 max-age=600，戳一变就绕开那份缓存
@@ -110,11 +114,22 @@ for (let i = 0; i < cands.length && !snap; i++) {
   const t0 = Date.now();
   try {
     const r = await fetchText(bust);
-    snap = toSnap(cands[i], r);
-    lines.push(shortUrl(cands[i]) + ' [' + r.status + '] 通了 ' + ((Date.now() - t0) / 1000).toFixed(1) + 's');
+    const got = toSnap(cands[i], r);
+    if (got && typeof got.v === 'number' && got.v >= 3) {
+      snap = got;
+      lines.push(shortUrl(cands[i]) + ' [' + r.status + '] 通了 ' + ((Date.now() - t0) / 1000).toFixed(1) + 's');
+    } else if (!snapOld) {
+      // 老版本快照（v2 及以前）：很可能是「参数」里填过旧文件名。先收着，继续往后试新的。
+      snapOld = got; snapOldUrl = cands[i];
+      lines.push(shortUrl(cands[i]) + ' [' + r.status + '] 只读到旧版（v' + (got && got.v) + '），继续找新的');
+    }
   } catch (e) {
     lines.push(shortUrl(cands[i]) + ' 不行：' + String(e && e.message ? e.message : e));
   }
+}
+if (!snap && snapOld) {
+  snap = snapOld;   // 全院一个新版都没读到：退回旧的那份，至少不白屏
+  lines.push('用旧版顶着：' + shortUrl(snapOldUrl));
 }
 
 // 一个地址都没读到：翻本地缓存顶着（断网、Gitee 抽风时还能看见课表，只是会标上时间）
