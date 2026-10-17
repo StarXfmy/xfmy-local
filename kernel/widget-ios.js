@@ -58,8 +58,10 @@ function pushCand(u) {
 pushCand(args.widgetParameter);
 pushCand(rawTwin(args.widgetParameter));
 pushCand(GITEE_RAW);
-pushCand(DEFAULT_URL);
+// Gitee 的 raw 会被内容审核拦成 451（课名里的词触发）时，API 路径还通，
+// 而且 iPhone 连不上 GitHub——所以 API 排在 GitHub 那条前面，少白等一个超时。
 pushCand(GITEE_API);
+pushCand(DEFAULT_URL);
 
 function shortUrl(u) {
   return String(u)
@@ -216,13 +218,12 @@ if (!snap) {
     if (auto) {
       line = auto[0]; isIn = auto[1];
     } else if (typeof nx.atMin === 'number' && day.date === localDay(0) && nx.state !== 'done') {
-      const now = new Date();
-      const diff = nx.atMin - (now.getHours() * 60 + now.getMinutes());
+      // 老快照只有 atMin（目标时刻）：同样只说钟点，别报「还剩多少」——照片会旧
       const nm = nx.name || '';
       if (nx.state === 'in') {
-        line = diff > 0 ? '在上 ' + nm + ' · 剩 ' + leftText(diff) : '这节课按课表该下课了';
+        line = '在上 ' + nm + ' · 到 ' + toClock(nx.atMin);
       } else {
-        line = diff > 0 ? '下一节 ' + nm + ' · ' + leftText(diff) + '后' : '这节课按课表该开始了';
+        line = '下一节 ' + toClock(nx.atMin) + ' · ' + nm;
       }
     }
     const big = w.addText(line);
@@ -349,14 +350,23 @@ function autoCount(snap, day) {
   }
   if (!segs.length) return null;
   segs.sort((x, y) => x.start - y.start);
+  // 文案口径与鸿蒙/安卓不同：iPhone 小组件是"每隔一阵重拍的照片"（iOS 不让第三方实时刷新），
+  // 写"还剩 30 分"一小时后就成假话了；写"到 11:55 / 10:25 上课"这张照片放多久都读不出错。
   for (const s of segs) {
-    if (nowMin >= s.start && nowMin < s.end) return ['在上 ' + s.name + ' · 剩 ' + leftText(s.end - nowMin), true];
+    if (nowMin >= s.start && nowMin < s.end) return ['在上 ' + s.name + ' · 到 ' + toClock(s.end), true];
   }
   for (const s of segs) {
-    if (s.start > nowMin) return ['下一节 ' + s.name + ' · ' + leftText(s.start - nowMin) + '后', false];
+    if (s.start > nowMin) return ['下一节 ' + toClock(s.start) + ' · ' + s.name, false];
   }
   const n = numOk(day.courseCount) && day.courseCount > 0 ? day.courseCount : segs.length;
   return ['今天的 ' + n + ' 节课上完了', false];
+}
+
+/** 当天第几分钟 → 「10:25」这种钟点（iPhone 上用绝对时刻，见上面那段注释）。 */
+function toClock(min) {
+  const m = ((Math.round(min) % 1440) + 1440) % 1440;
+  const h = Math.floor(m / 60), mm = m % 60;
+  return (h < 10 ? '0' : '') + h + ':' + (mm < 10 ? '0' : '') + mm;
 }
 
 /** 把"还剩几分钟"说成人话，口径和 App 里的一致。 */

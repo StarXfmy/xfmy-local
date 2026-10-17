@@ -366,11 +366,12 @@ async function api(path, init) {
 
 /**
  * 内容指纹：自动发布靠它挡掉"内容没变又提交一次"。
- * 只算真正的内容（days/wx/tips/scope），at 每次都是新的，算进去就永远判成变了、
+ * 只算真正的内容（days/wx/tips/scope/periods），at 每次都是新的，算进去就永远判成变了、
  * 每次保存都会往仓库提一笔。倒计时写进了 days，所以时间真的推进了照样会重新发。
+ * periods 必须算进来：只改作息表（没动课程）时，不算它就会判成"没变"而发不出去。
  */
 function fingerprint(snap) {
-  var s = JSON.stringify({ d: snap.days, w: snap.wx, t: snap.tips, s: snap.scope });
+  var s = JSON.stringify({ d: snap.days, w: snap.wx, t: snap.tips, s: snap.scope, p: snap.periods });
   var h = 5381;
   for (var i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) >>> 0;
   return h.toString(36) + '-' + s.length;
@@ -473,7 +474,12 @@ export async function publish(opts) {
   var snap = await buildSnapshot({ scope: c.scope, days: c.days });
   var json = JSON.stringify(snap);
   var fp = fingerprint(snap);
-  if (!o.force && fp === c.lastFp) return { skipped: true, report: '跟上次一样，没重复提交' };
+  // 文件名也参与判断：换了文件名（「换个看不出来的文件名」那个按钮）后，
+  // 内容往往一个字没动——只看指纹就会跳过，名字白换。lastPath 是后加字段，老配置里没有，
+  // 一律当"换过名"处理、多发一次，不算错。
+  if (!o.force && fp === c.lastFp && c.path === c.lastPath) {
+    return { skipped: true, report: '跟上次一样，没重复提交' };
+  }
 
   var msg = 'widget: 快照 ' + snap.days[0].date + '（' + snap.scope + '）';
   var ok = [], bad = [], scriptSent = false;
@@ -490,7 +496,7 @@ export async function publish(opts) {
   if (!ok.length) throw new Error('两边都没发成功。' + bad.join('；'));
 
   // 全成功才记指纹（下次内容没变就跳过）；有一条挂了就先不记，好让它下次接着重试
-  var rec = { lastAt: Date.now(), lastSize: json.length };
+  var rec = { lastAt: Date.now(), lastSize: json.length, lastPath: c.path };
   if (!bad.length) rec.lastFp = fp;
   setCfg(rec);
 

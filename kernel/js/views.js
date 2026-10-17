@@ -305,6 +305,15 @@ export function viewCalendar(mount, app) {
   if (cal.sel) {
     var ds = cal.sel;
     var one = card(ds + ' 这天');
+    var ttDoc = M.timetableDoc();
+    var dayCourses = T.coursesOn(ttDoc, ds);
+    add(one.body, el('h4', null, '那天的课'));
+    if (!dayCourses.length) add(one.body, el('p', 'empty small', '这天没课'));
+    dayCourses.forEach(function (co) {
+      add(one.body, add(el('p', 'row'), el('b', 'when', T.courseWhen(co, ttDoc.periods)),
+        el('span', 'name', co.name), co.room ? el('i', 'where', co.room) : null));
+    });
+    if (dayCourses.length) add(one.body, el('p', 'hint small', '这里只能看：要加课、改时间或调周次，去「课表」页。'));
     var dayTodos = todos.filter(function (x) { return x.date === ds; });
     add(one.body, el('h4', null, '待办'));
     if (!dayTodos.length) add(one.body, el('p', 'empty small', '这天没有待办'));
